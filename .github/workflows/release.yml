@@ -44,6 +44,14 @@ jobs:
             git push origin "$tag"
           fi
           echo "Releasing $tag"
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
 
+      # Run release.sh directly rather than via BigWigsMods/packager@v2: on a
+      # branch push it skips any commit that already has a tag (expecting a
+      # separate tag-push build), and a tag pushed with GITHUB_TOKEN doesn't
+      # trigger workflows. Presenting the run as a tag build avoids that.
       - name: Package and release
-        uses: BigWigsMods/packager@v2
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/BigWigsMods/packager/v2/release.sh -o "$RUNNER_TEMP/release.sh"
+          GITHUB_REF="refs/tags/$RELEASE_TAG" GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_REF_TYPE=tag \
+            bash "$RUNNER_TEMP/release.sh"

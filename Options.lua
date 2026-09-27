@@ -108,7 +108,14 @@ function ns.CreateOptions()
     end
 
     soundDD:SetupMenu(function(_, root)
-        AddGroup(root, "Game Sounds", ns.GAME_SOUNDS)
+        for _, group in ipairs(ns.CDM_SOUNDS) do
+            local list = {}
+            for _, s in ipairs(group[2]) do
+                list[#list + 1] = { key = "cdm:" .. s[1], label = s[2] }
+            end
+            AddGroup(root, group[1], list)
+        end
+        root:CreateDivider()
         local shared = ns.GetSharedMediaSounds()
         if #shared > 0 then
             AddGroup(root, "Shared Media", shared)

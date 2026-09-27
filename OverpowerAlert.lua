@@ -3,9 +3,12 @@ local ADDON_NAME, ns = ...
 -- Overpower ranks, highest first. The highest known rank is watched.
 local OVERPOWER_IDS = { 11585, 11584, 7887, 7384 }
 
+-- Warhorn, from the Instruments category.
+local DEFAULT_SOUND = "cdm:316723"
+
 local DEFAULTS = {
     enabled = true,
-    sound = "RAID_WARNING",
+    sound = DEFAULT_SOUND,
     customSound = "",
     channel = "Master",
     showText = true,
@@ -18,59 +21,133 @@ local DEFAULTS = {
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 ns.LSM = LSM
 
--- Built-in game sounds, keyed by SOUNDKIT name (played with PlaySound).
--- Keys that don't exist on this client are dropped at load.
-local GAME_SOUNDS = {
-    { "RAID_WARNING",                           "Raid Warning" },
-    { "RAID_BOSS_EMOTE_WARNING",                "Boss Emote Warning" },
-    { "UI_RAID_BOSS_WHISPER_WARNING",           "Boss Whisper Warning" },
-    { "READY_CHECK",                            "Ready Check" },
-    { "ALARM_CLOCK_WARNING_1",                  "Alarm Clock 1" },
-    { "ALARM_CLOCK_WARNING_2",                  "Alarm Clock 2" },
-    { "ALARM_CLOCK_WARNING_3",                  "Alarm Clock 3" },
-    { "PVP_THROUGH_QUEUE",                      "PvP Queue Ready" },
-    { "IG_PVP_UPDATE",                          "PvP Update" },
-    { "MAP_PING",                               "Map Ping" },
-    { "TELL_MESSAGE",                           "Whisper" },
-    { "UI_BNET_TOAST",                          "Battle.net Toast" },
-    { "IG_PLAYER_INVITE",                       "Group Invite" },
-    { "LFG_REWARDS",                            "Dungeon Rewards" },
-    { "IG_QUEST_LIST_COMPLETE",                 "Quest Complete" },
-    { "IG_QUEST_LIST_OPEN",                     "Quest Open" },
-    { "LEVELUP",                                "Level Up" },
-    { "ACHIEVEMENT_MENU_OPEN",                  "Achievement Menu" },
-    { "AUCTION_WINDOW_OPEN",                    "Auction Open" },
-    { "AUCTION_WINDOW_CLOSE",                   "Auction Close" },
-    { "LOOT_WINDOW_COIN_SOUND",                 "Coin Loot" },
-    { "IG_MAINMENU_OPEN",                       "Menu Open" },
-    { "IG_MAINMENU_OPTION_CHECKBOX_ON",         "Checkbox Click" },
-    { "IG_SPELLBOOK_OPEN",                      "Spellbook Open" },
-    { "IG_CHARACTER_INFO_TAB",                  "Tab Click" },
-    { "IG_BACKPACK_OPEN",                       "Backpack Open" },
-    { "IG_ABILITY_ICON_DROP",                   "Ability Drop" },
-    { "PUT_DOWN_SMALL_CHAIN",                   "Chain" },
-    { "GS_TITLE_OPTION_OK",                     "Menu OK" },
-    { "UI_WORLDQUEST_START",                    "World Quest Start" },
-    { "UI_WORLDQUEST_COMPLETE",                 "World Quest Complete" },
-    { "UI_EPICLOOT_TOAST",                      "Epic Loot Toast" },
-    { "UI_LEGENDARY_LOOT_TOAST",                "Legendary Loot Toast" },
-    { "UI_BONUS_LOOT_ROLL_END",                 "Bonus Roll" },
-    { "UI_GARRISON_TOAST_MISSION_COMPLETE",     "Mission Complete Toast" },
-    { "UI_ORDERHALL_TALENT_READY_TOAST",        "Talent Ready Toast" },
-    { "UI_PET_BATTLE_START",                    "Pet Battle Start" },
-    { "UI_71_SOCIAL_QUEUEING_TOAST",            "Social Queue Toast" },
-    { "UI_IG_STORE_PURCHASE_DELIVERED_TOAST_01","Store Delivery Toast" },
+-- The sound alert list from Blizzard's Cooldown Manager
+-- (Blizzard_CooldownViewer/CooldownViewerSoundAlertData.lua), in the same
+-- categories and order. Entries are { soundKitID, name }.
+ns.CDM_SOUNDS = {
+    { "Animals", {
+        { 316401, "Cat" },
+        { 316406, "Chicken" },
+        { 316407, "Cow" },
+        { 316409, "Gnoll" },
+        { 316715, "Goat" },
+        { 316411, "Lion" },
+        { 316412, "Panther" },
+        { 316413, "Rattlesnake" },
+        { 316414, "Sheep" },
+        { 316415, "Wolf" },
+    } },
+    { "Devices", {
+        { 316442, "Boat Horn" },
+        { 316436, "Air Horn" },
+        { 316713, "Bike Horn" },
+        { 316446, "Cash Register" },
+        { 316717, "Jackpot Bell" },
+        { 316718, "Jackpot Coins" },
+        { 316719, "Jackpot Fail" },
+        { 316433, "Rotary Phone Dial" },
+        { 316492, "Rotary Phone Ring" },
+        { 316425, "Stove Pipe" },
+        { 316430, "Trashcan Lid" },
+    } },
+    { "Impacts", {
+        { 316528, "Anvil Strike" },
+        { 316419, "Bubble Smash" },
+        { 316531, "Low Thud" },
+        { 316532, "Metal Clanks" },
+        { 316486, "Metal Rattle" },
+        { 316484, "Metal Scrape" },
+        { 316536, "Metal Warble" },
+        { 316434, "Pop Click" },
+        { 316453, "Strange Clang" },
+        { 316535, "Sword Scrape" },
+    } },
+    { "Instruments", {
+        { 316493, "Bell Ring" },
+        { 316712, "Bell Trill" },
+        { 316722, "Brass" },
+        { 316447, "Chime Ascending" },
+        { 316477, "Guitar Chug" },
+        { 316482, "Guitar Pinch" },
+        { 316509, "Pitch Pipe Distressed" },
+        { 316501, "Pitch Pipe Note" },
+        { 316540, "Synth Big" },
+        { 316476, "Synth Buzz" },
+        { 316460, "Synth High" },
+        { 316723, "Warhorn" },
+    } },
+    { "Short", {
+        { 353392, "Bell Strike" },
+        { 353387, "Bell Tree" },
+        { 353388, "Big Pot" },
+        { 353389, "Blades" },
+        { 353424, "Coffee Mug" },
+        { 353393, "Cow Bell" },
+        { 353395, "Finger Snap" },
+        { 353404, "Guitar" },
+        { 353405, "Kalimba" },
+        { 353406, "Metal Blade Drop" },
+        { 353407, "Metal Blade On Rod" },
+        { 353408, "Metal Impact" },
+        { 353410, "Mini Wood Xylophone" },
+        { 353425, "Paper Cup" },
+        { 353417, "Sheet Metal" },
+        { 353419, "Stove Pipe" },
+        { 353420, "Stove Pipe Blade" },
+        { 353421, "Sword Shing" },
+        { 353402, "Synth Bleep" },
+        { 353400, "Synth Blurp" },
+        { 353397, "Synth Error" },
+        { 353399, "Synth High" },
+        { 353423, "Triangle" },
+        { 353426, "Water Drop" },
+        { 353427, "Wine Bottle" },
+        { 353428, "Wood Xylophone" },
+    } },
+    { "Warcraft II", {
+        { 316731, "Abstract Whoosh" },
+        { 316733, "Choir" },
+        { 316735, "Construction" },
+        { 316736, "Magic Chimes" },
+        { 316745, "Pig Squeal" },
+        { 316738, "Saws" },
+        { 316746, "Seal" },
+        { 316748, "Slow" },
+        { 316749, "Smith" },
+        { 316739, "Synth Stinger" },
+        { 316740, "Trumpet Rally" },
+        { 316737, "Zippy Magic" },
+    } },
+    { "Warcraft III", {
+        { 316773, "Bell" },
+        { 316774, "Crunchy Bell" },
+        { 316768, "Drum Splash" },
+        { 316775, "Error" },
+        { 316769, "Fanfare" },
+        { 316776, "Gate Open" },
+        { 316770, "Gold" },
+        { 316778, "Magic Shimmer" },
+        { 316771, "Ringout" },
+        { 316765, "Rooster" },
+        { 316779, "Shimmer Bell" },
+        { 316766, "Wolf Howl" },
+    } },
 }
 
 -- Sound keys:
---   "<SOUNDKIT name>"  built-in game sound
---   "sm:<name>"        LibSharedMedia sound (BigWigs, SharedMedia packs, etc.)
---   "CUSTOM"           user-entered path or FileDataID
-ns.GAME_SOUNDS = {}
-for _, s in ipairs(GAME_SOUNDS) do
-    if SOUNDKIT and SOUNDKIT[s[1]] then
-        ns.GAME_SOUNDS[#ns.GAME_SOUNDS + 1] = { key = s[1], label = s[2] }
+--   "cdm:<soundKitID>"  Cooldown Manager sound
+--   "sm:<name>"         LibSharedMedia sound (BigWigs, SharedMedia packs, etc.)
+--   "CUSTOM"            user-entered path or FileDataID
+local cdmLabels = {}
+for _, category in ipairs(ns.CDM_SOUNDS) do
+    for _, s in ipairs(category[2]) do
+        cdmLabels["cdm:" .. s[1]] = s[2]
     end
+end
+
+function ns.IsValidSoundKey(key)
+    return type(key) == "string"
+        and (cdmLabels[key] ~= nil or key:find("^sm:") ~= nil or key == "CUSTOM")
 end
 
 -- Every sound registered with LibSharedMedia, sorted, excluding "None".
@@ -90,10 +167,7 @@ function ns.GetSoundLabel(key)
     if key == "CUSTOM" then return "Custom" end
     local smName = key and key:match("^sm:(.+)")
     if smName then return smName end
-    for _, s in ipairs(ns.GAME_SOUNDS) do
-        if s.key == key then return s.label end
-    end
-    return key or "?"
+    return cdmLabels[key] or key or "?"
 end
 
 function ns.PlayAlertSound(key)
@@ -101,8 +175,11 @@ function ns.PlayAlertSound(key)
     key = key or db.sound
     local channel = db.channel or "Master"
 
+    local kitID = tonumber(key:match("^cdm:(%d+)$"))
     local smName = key:match("^sm:(.+)")
-    if smName then
+    if kitID then
+        PlaySound(kitID, channel, true)
+    elseif smName then
         local value = LSM and LSM:Fetch("sound", smName, true)
         -- LSM sounds are a file path/FileDataID, or occasionally a SoundKit ID.
         if type(value) == "string" then
@@ -115,8 +192,6 @@ function ns.PlayAlertSound(key)
         if custom ~= "" then
             PlaySoundFile(tonumber(custom) or custom, channel)
         end
-    elseif SOUNDKIT and SOUNDKIT[key] then
-        PlaySound(SOUNDKIT[key], channel, true)
     end
 end
 
@@ -196,15 +271,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
         for k, v in pairs(DEFAULTS) do
             if OverpowerAlertDB[k] == nil then OverpowerAlertDB[k] = v end
         end
-        -- 1.0 used short aliases for sound keys; map them to SOUNDKIT names.
-        local renamed = {
-            ALARM_CLOCK = "ALARM_CLOCK_WARNING_3", PVP_QUEUE = "PVP_THROUGH_QUEUE",
-            PLAYER_INVITE = "IG_PLAYER_INVITE", QUEST_COMPLETE = "IG_QUEST_LIST_COMPLETE",
-            LEVEL_UP = "LEVELUP", AUCTION_OPEN = "AUCTION_WINDOW_OPEN",
-            LOOT_COIN = "LOOT_WINDOW_COIN_SOUND",
-        }
+        -- Older versions offered a different built-in list (SOUNDKIT names);
+        -- move those selections to the default.
         local db = OverpowerAlertDB
-        db.sound = renamed[db.sound] or db.sound
+        if not ns.IsValidSoundKey(db.sound) then db.sound = DEFAULT_SOUND end
         if ns.InitDisplay then ns.InitDisplay() end
         if ns.CreateOptions then ns.CreateOptions() end
         self:UnregisterEvent("ADDON_LOADED")

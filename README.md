@@ -18,8 +18,8 @@ The addon works on its own once installed. When your target dodges, Overpower be
 
 Open the options with `/opa`, or from **Game Menu → Options → AddOns → Overpower Alert**.
 
-- **Alert sound:** pick from three groups:
-  - **Game Sounds:** about 40 built-in sounds.
+- **Alert sound:** pick from:
+  - **Cooldown Manager sounds:** the same 93 sounds Blizzard's Cooldown Manager offers for its alerts, in the same categories (Animals, Devices, Impacts, Instruments, Short, Warcraft II, Warcraft III). The default is Warhorn.
   - **Shared Media:** every sound other addons share through LibSharedMedia, such as BigWigs, WeakAuras or SharedMedia sound packs. It's empty until you install one of those.
   - **Custom:** a sound file path or FileDataID of your choice.
 

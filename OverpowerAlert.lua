@@ -16,6 +16,10 @@ local DEFAULTS = {
     throttle = 1.0,
     textSize = 36,
     textPos = nil, -- { point, relPoint, x, y }; nil = default spot
+    showIcon = false,
+    iconSize = 64,
+    iconGlow = "proc",
+    iconPos = nil,
 }
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -241,6 +245,7 @@ local function Alert()
     lastAlert = now
     ns.PlayAlertSound()
     if OverpowerAlertDB.showText and ns.ShowText then ns.ShowText() end
+    if OverpowerAlertDB.showIcon and ns.ShowIcon then ns.ShowIcon() end
 end
 
 local function Check()
@@ -250,6 +255,8 @@ local function Check()
     wasUsable = usable
 end
 ns.Check = Check
+ns.IsOverpowerUsable = IsOverpowerUsable
+ns.GetOverpowerID = function() return overpowerID end
 
 local function StartTicker()
     if not ticker then ticker = C_Timer.NewTicker(0.1, Check) end
@@ -334,9 +341,9 @@ SlashCmdList.OVERPOWERALERT = function(msg)
         OverpowerAlertDB.enabled = not OverpowerAlertDB.enabled
         print("|cffff6619Overpower Alert|r " .. (OverpowerAlertDB.enabled and "enabled" or "disabled"))
     elseif msg == "unlock" or msg == "move" then
-        ns.SetTextUnlocked(true)
+        ns.SetUnlocked(nil, true)
     elseif msg == "lock" then
-        ns.SetTextUnlocked(false)
+        ns.SetUnlocked(nil, false)
     elseif ns.OpenOptions then
         ns.OpenOptions()
     end

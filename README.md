@@ -25,8 +25,9 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 
   Choosing a sound plays it, so you can try several in a row.
 - **Sound channel:** Master, Sound Effects, Dialog, Ambience or Music.
-- **On-screen text:** show or hide it, and set the size.
-- **Moving the text:** click **Unlock Text**, drag the highlighted box where you want it, then right-click it to lock. **Reset Position** puts it back in the default spot.
+- **On-screen text:** show or hide "OVERPOWER!", and set its size.
+- **Spell icon** (off by default): pops up the Overpower icon and keeps it up while Overpower is usable. Set its size and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
+- **Moving the text or icon:** click **Unlock Text** or **Unlock Icon**, drag the highlighted box where you want it, then right-click it to lock. **Reset Position** puts it back in the default spot, and **Preview** shows it as it will appear.
 
 ## Slash commands
 
@@ -35,7 +36,7 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 | `/opa` | Open the options |
 | `/opa test` | Play the current alert sound |
 | `/opa toggle` | Turn the alert on or off |
-| `/opa unlock` / `/opa lock` | Unlock the text to move it, or lock it again |
+| `/opa unlock` / `/opa lock` | Unlock the text and icon to move them, or lock them again |
 
 ## How it works
 
@@ -44,4 +45,4 @@ On WoW Forever's client, addons can't read the combat log, so the addon can't se
 
 ## Credits
 
-The addon bundles [LibStub](https://www.wowace.com/projects/libstub), [CallbackHandler-1.0](https://www.wowace.com/projects/callbackhandler) and [LibSharedMedia-3.0](https://www.curseforge.com/wow/addons/libsharedmedia-3-0), which keep their own licenses.
+The addon bundles [LibStub](https://www.wowace.com/projects/libstub), [CallbackHandler-1.0](https://www.wowace.com/projects/callbackhandler), [LibSharedMedia-3.0](https://www.curseforge.com/wow/addons/libsharedmedia-3-0) and [LibCustomGlow-1.0](https://github.com/Stanzilla/LibCustomGlow), which keep their own licenses.

@@ -18,6 +18,14 @@ local TEXT_SIZES = {
     { value = 64, label = "Massive (64)" },
 }
 
+local ICON_SIZES = {
+    { value = 40,  label = "Small (40)" },
+    { value = 52,  label = "Medium (52)" },
+    { value = 64,  label = "Large (64)" },
+    { value = 80,  label = "Huge (80)" },
+    { value = 100, label = "Massive (100)" },
+}
+
 local MENU_MAX_HEIGHT = 400
 
 local function CreateCheckbox(parent, label, key, anchor, yOff)
@@ -61,26 +69,35 @@ function ns.CreateOptions()
     local panel = CreateFrame("Frame")
     panel.name = "Overpower Alert"
 
-    local title = Label(panel, "Overpower Alert", "GameFontNormalLarge")
+    -- The page is taller than the settings window, so it scrolls.
+    local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 0, -4)
+    scroll:SetPoint("BOTTOMRIGHT", -28, 4)
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(600, 1000)
+    scroll:SetScrollChild(content)
+    scroll:SetScript("OnSizeChanged", function(_, width) content:SetWidth(width) end)
+
+    local title = Label(content, "Overpower Alert", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
 
-    local sub = Label(panel, "Plays a sound when Overpower becomes usable after your target dodges.",
+    local sub = Label(content, "Plays a sound when Overpower becomes usable after your target dodges.",
         "GameFontHighlightSmall")
     sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
 
-    local enabled = CreateCheckbox(panel, "Enable alert", "enabled", sub, -12)
-    local anyStance = CreateCheckbox(panel,
+    local enabled = CreateCheckbox(content, "Enable alert", "enabled", sub, -12)
+    local anyStance = CreateCheckbox(content,
         "Also alert on any target dodge (any stance, including dodges of others' attacks)",
         "anyStance", enabled, -4)
 
     ---------------------------------------------------------------------------
     -- Sound
     ---------------------------------------------------------------------------
-    local soundLabel = Label(panel, "Alert sound")
+    local soundLabel = Label(content, "Alert sound")
     soundLabel:SetPoint("TOPLEFT", anyStance, "BOTTOMLEFT", 4, -20)
 
     local customBox
-    local soundDD = CreateFrame("DropdownButton", nil, panel, "WowStyle1DropdownTemplate")
+    local soundDD = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
     soundDD:SetWidth(240)
     soundDD:SetPoint("TOPLEFT", soundLabel, "BOTTOMLEFT", 0, -6)
 
@@ -127,11 +144,11 @@ function ns.CreateOptions()
         root:CreateRadio("Custom (path or file ID)", IsSound, SetSound, "CUSTOM")
     end)
 
-    local test = CreateButton(panel, "Test", 80)
+    local test = CreateButton(content, "Test", 80)
     test:SetPoint("LEFT", soundDD, "RIGHT", 10, 0)
     test:SetScript("OnClick", function() ns.PlayAlertSound() end)
 
-    local smHint = Label(panel,
+    local smHint = Label(content,
         "Shared Media lists every sound registered through LibSharedMedia by other addons\n" ..
         "(BigWigs, SharedMedia packs, WeakAuras, etc.). Install those to get more sounds.",
         "GameFontDisableSmall")
@@ -139,7 +156,7 @@ function ns.CreateOptions()
     smHint:SetPoint("TOPLEFT", soundDD, "BOTTOMLEFT", 0, -6)
 
     -- Custom sound path / FileDataID
-    customBox = CreateFrame("Frame", nil, panel)
+    customBox = CreateFrame("Frame", nil, content)
     customBox:SetPoint("TOPLEFT", smHint, "BOTTOMLEFT", 0, -10)
     customBox:SetSize(420, 44)
 
@@ -160,54 +177,96 @@ function ns.CreateOptions()
     edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
     -- Channel
-    local channelLabel = Label(panel, "Sound channel")
+    local channelLabel = Label(content, "Sound channel")
     channelLabel:SetPoint("TOPLEFT", customBox, "BOTTOMLEFT", 0, -8)
 
-    local channelDD = CreateRadioDropdown(panel, 240,
+    local channelDD = CreateRadioDropdown(content, 240,
         function() return CHANNELS end,
         function() return OverpowerAlertDB.channel end,
         function(value) OverpowerAlertDB.channel = value end)
     channelDD:SetPoint("TOPLEFT", channelLabel, "BOTTOMLEFT", 0, -6)
 
     ---------------------------------------------------------------------------
-    -- On-screen text
+    -- On-screen text and spell icon. Both get the same controls: show
+    -- checkbox, size, unlock/reset/preview.
     ---------------------------------------------------------------------------
-    local textHeader = Label(panel, "On-screen text", "GameFontNormalLarge")
-    textHeader:SetPoint("TOPLEFT", channelDD, "BOTTOMLEFT", 0, -24)
+    local unlockButtons = {}
+    local menuDropdowns = {}
 
-    local showText = CreateCheckbox(panel, "Show \"OVERPOWER!\" on screen", "showText", textHeader, -6)
-    showText:SetPoint("TOPLEFT", textHeader, "BOTTOMLEFT", -4, -6)
+    local function BuildDisplaySection(anchor, s)
+        local header = Label(content, s.title, "GameFontNormalLarge")
+        header:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -24)
 
-    local sizeLabel = Label(panel, "Text size")
-    sizeLabel:SetPoint("TOPLEFT", showText, "BOTTOMLEFT", 4, -12)
+        local show = CreateCheckbox(content, s.showLabel, s.showKey, header, -6)
+        show:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -4, -6)
 
-    local sizeDD = CreateRadioDropdown(panel, 160,
-        function() return TEXT_SIZES end,
-        function() return OverpowerAlertDB.textSize end,
-        function(value) OverpowerAlertDB.textSize = value; ns.ApplyTextStyle() end)
-    sizeDD:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -6)
+        local sizeLabel = Label(content, s.sizeLabel)
+        sizeLabel:SetPoint("TOPLEFT", show, "BOTTOMLEFT", 4, -12)
 
-    local unlock = CreateButton(panel, "Unlock Text", 120)
-    unlock:SetPoint("LEFT", sizeDD, "RIGHT", 10, 0)
-    unlock:SetScript("OnClick", function() ns.SetTextUnlocked(not ns.IsTextUnlocked()) end)
+        local sizeDD = CreateRadioDropdown(content, 160,
+            function() return s.sizes end,
+            function() return OverpowerAlertDB[s.sizeKey] end,
+            function(value) OverpowerAlertDB[s.sizeKey] = value; s.applyStyle() end)
+        sizeDD:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -6)
+        menuDropdowns[#menuDropdowns + 1] = sizeDD
 
-    local reset = CreateButton(panel, "Reset Position", 120)
-    reset:SetPoint("LEFT", unlock, "RIGHT", 6, 0)
-    reset:SetScript("OnClick", function() ns.ResetTextPosition() end)
+        local unlock = CreateButton(content, "Unlock " .. s.noun, 120)
+        unlock:SetPoint("LEFT", sizeDD, "RIGHT", 10, 0)
+        unlock:SetScript("OnClick", function() ns.SetUnlocked(s.which, not ns.IsUnlocked(s.which)) end)
+        unlockButtons[s.which] = { button = unlock, noun = s.noun }
 
-    local preview = CreateButton(panel, "Preview", 80)
-    preview:SetPoint("LEFT", reset, "RIGHT", 6, 0)
-    preview:SetScript("OnClick", function() ns.ShowText() end)
+        local reset = CreateButton(content, "Reset Position", 120)
+        reset:SetPoint("LEFT", unlock, "RIGHT", 6, 0)
+        reset:SetScript("OnClick", function() ns.ResetPosition(s.which) end)
 
-    local moveHint = Label(panel, "Unlock, then drag the highlighted text anywhere. Right-click it (or /opa lock) to lock.",
-        "GameFontDisableSmall")
-    moveHint:SetPoint("TOPLEFT", sizeDD, "BOTTOMLEFT", 0, -8)
+        local preview = CreateButton(content, "Preview", 80)
+        preview:SetPoint("LEFT", reset, "RIGHT", 6, 0)
+        preview:SetScript("OnClick", s.preview)
 
-    function ns.OnUnlockChanged(isUnlocked)
-        unlock:SetText(isUnlocked and "Lock Text" or "Unlock Text")
+        return sizeDD
     end
 
-    local hint = Label(panel, "Slash commands: /opa (options), /opa test, /opa toggle, /opa unlock, /opa lock",
+    local textSizeDD = BuildDisplaySection(channelDD, {
+        which = "text", noun = "Text", title = "On-screen text",
+        showLabel = "Show \"OVERPOWER!\" on screen", showKey = "showText",
+        sizeLabel = "Text size", sizeKey = "textSize", sizes = TEXT_SIZES,
+        applyStyle = function() ns.ApplyTextStyle() end,
+        preview = function() ns.ShowText() end,
+    })
+
+    local iconSizeDD = BuildDisplaySection(textSizeDD, {
+        which = "icon", noun = "Icon", title = "Spell icon",
+        showLabel = "Show the Overpower icon (stays up while Overpower is usable)", showKey = "showIcon",
+        sizeLabel = "Icon size", sizeKey = "iconSize", sizes = ICON_SIZES,
+        applyStyle = function() ns.ApplyIconStyle() end,
+        preview = function() ns.ShowIcon() end,
+    })
+
+    local glowLabel = Label(content, "Icon glow")
+    glowLabel:SetPoint("TOPLEFT", iconSizeDD, "BOTTOMLEFT", 0, -12)
+
+    local glowDD = CreateRadioDropdown(content, 160,
+        function() return ns.GLOW_STYLES end,
+        function() return OverpowerAlertDB.iconGlow end,
+        function(value)
+            OverpowerAlertDB.iconGlow = value
+            ns.ApplyIconStyle()
+            if not ns.IsUnlocked("icon") then ns.ShowIcon() end
+        end)
+    glowDD:SetPoint("TOPLEFT", glowLabel, "BOTTOMLEFT", 0, -6)
+    menuDropdowns[#menuDropdowns + 1] = glowDD
+
+    local moveHint = Label(content,
+        "Unlock, then drag the highlighted box anywhere. Right-click it (or /opa lock) to lock.",
+        "GameFontDisableSmall")
+    moveHint:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", 0, -16)
+
+    function ns.OnUnlockChanged(which, isUnlocked)
+        local b = unlockButtons[which]
+        if b then b.button:SetText((isUnlocked and "Lock " or "Unlock ") .. b.noun) end
+    end
+
+    local hint = Label(content, "Slash commands: /opa (options), /opa test, /opa toggle, /opa unlock, /opa lock",
         "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", moveHint, "BOTTOMLEFT", 0, -20)
 
@@ -216,7 +275,7 @@ function ns.CreateOptions()
         soundDD:GenerateMenu()
         RefreshSoundText()
         channelDD:GenerateMenu()
-        sizeDD:GenerateMenu()
+        for _, dd in ipairs(menuDropdowns) do dd:GenerateMenu() end
     end)
 
     if Settings and Settings.RegisterCanvasLayoutCategory then

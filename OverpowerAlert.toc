@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: Overpower Alert
+## Notes: Plays a sound when Overpower becomes usable after your target dodges.
+## Author: Theliahh
+## Version: 1.1.0
+## SavedVariables: OverpowerAlertDB
+## IconTexture: Interface\Icons\Ability_MeleeDamage
+## OptionalDeps: LibSharedMedia-3.0, SharedMedia, BigWigs
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
+Libs\LibSharedMedia-3.0\lib.xml
+
+OverpowerAlert.lua
+Display.lua
+Options.lua

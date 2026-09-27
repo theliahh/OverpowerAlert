@@ -41,9 +41,6 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 
 On WoW Forever's client, addons can't read the combat log, so the addon can't see the dodge directly. Instead it watches Overpower itself, which only becomes usable just after a dodge, and alerts when it switches from unusable to usable. The addon picks up whichever rank you've learned.
 
-## Releases
-
-Every push to `main` triggers a GitHub Actions workflow that builds the addon with [BigWigs' packager](https://github.com/BigWigsMods/packager). It publishes a GitHub release with the zip and uploads the same build to Wago. Versions are numbered `1.1.<build number>`.
 
 ## Credits
 

@@ -1,0 +1,49 @@
+name: Package and release
+
+# Every push to main gets tagged with the next version and packaged by
+# BigWigs' packager, which creates the GitHub release (zip attached) and
+# uploads to Wago when WAGO_API_TOKEN and ## X-Wago-ID are set.
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # Bump this for minor/major releases; the patch number is the run number.
+  VERSION_PREFIX: "1.1"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    env:
+      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag this commit
+        run: |
+          tag="${VERSION_PREFIX}.${GITHUB_RUN_NUMBER}"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists (re-run); reusing it."
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
+          echo "Releasing $tag"
+
+      - name: Package and release
+        uses: BigWigsMods/packager@v2

@@ -1,0 +1,6 @@
+package-as: OverpowerAlert
+
+enable-nolib-creation: no
+
+ignore:
+  - README.md

@@ -6,6 +6,7 @@
 ## SavedVariables: OverpowerAlertDB
 ## IconTexture: Interface\Icons\Ability_MeleeDamage
 ## OptionalDeps: LibSharedMedia-3.0, SharedMedia, BigWigs
+## X-WAgo-ID: EGPaeEN1
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml

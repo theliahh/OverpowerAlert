@@ -34,7 +34,7 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 | Command | What it does |
 | --- | --- |
 | `/opa` | Open the options |
-| `/opa test` | Play the current alert sound |
+| `/opa test` | Preview the full alert: plays the sound, and shows the text and icon if they're turned on |
 | `/opa toggle` | Turn the alert on or off |
 | `/opa unlock` / `/opa lock` | Unlock the text and icon to move them, or lock them again |
 

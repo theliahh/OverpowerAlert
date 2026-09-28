@@ -336,7 +336,10 @@ SLASH_OVERPOWERALERT2 = "/overpoweralert"
 SlashCmdList.OVERPOWERALERT = function(msg)
     msg = strlower(strtrim(msg or ""))
     if msg == "test" then
+        -- Preview the full alert as configured, without the throttle.
         ns.PlayAlertSound()
+        if OverpowerAlertDB.showText and ns.ShowText then ns.ShowText() end
+        if OverpowerAlertDB.showIcon and ns.ShowIcon then ns.ShowIcon() end
     elseif msg == "toggle" then
         OverpowerAlertDB.enabled = not OverpowerAlertDB.enabled
         print("|cffff6619Overpower Alert|r " .. (OverpowerAlertDB.enabled and "enabled" or "disabled"))

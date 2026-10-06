@@ -204,7 +204,7 @@ function ns.InitDisplay()
         ns.ApplyTextStyle(ability.key)
 
         local iconEl = CreateElement(ability, "icon", d.iconX, d.iconY, function(t)
-            return t < ICON_MAX_HOLD and ns.IsUsable(ability.key)
+            return t < ICON_MAX_HOLD and ns.IsActive(ability.key)
         end)
         local f = iconEl.frame
         local border = f:CreateTexture(nil, "BACKGROUND")

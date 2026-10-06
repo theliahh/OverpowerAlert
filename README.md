@@ -14,7 +14,10 @@ The addon works on its own once installed. Both alerts are on by default, and ea
 - **Overpower:** usable for 5 seconds after your target dodges. It can only be used in Battle Stance, so that's the only stance where the normal alert fires.
 - **Revenge:** usable for 5 seconds after you block, dodge or parry. It can only be used in Defensive Stance, so that's the only stance where the normal alert fires.
 
-Revenge also has an "any stance" option (off by default) that alerts whenever you block, dodge or parry, in any stance. Overpower doesn't have one: outside Battle Stance, the game gives addons no way to tell your own dodged attacks from other players'.
+Each ability also has an "any stance" option (off by default):
+
+- **Overpower:** alerts when your target dodges *your* attack, in any stance, not just Battle Stance. Other players' dodged attacks don't count. With the icon turned on, it stays up for the whole 5-second opening.
+- **Revenge:** alerts whenever you block, dodge or parry, in any stance.
 
 ## Options
 
@@ -46,6 +49,8 @@ Commands that take an ability accept `overpower` (or `op`) or `revenge` (or `rev
 ## How it works
 
 On WoW Forever's client, addons can't read the combat log, so the addon can't see dodges, blocks or parries directly. Instead it watches Overpower and Revenge themselves. Each only becomes usable just after its trigger, so the addon alerts when one switches from unusable to usable. It picks up whichever rank you've learned.
+
+For Overpower's "any stance" option, the addon uses a quirk carried over from the original game: an Overpower opening is tracked as a hidden combo point on your character, which appears when your target dodges your attack and lasts 5 seconds, whatever stance you're in.
 
 ## Credits
 

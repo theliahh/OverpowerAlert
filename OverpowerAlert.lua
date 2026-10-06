@@ -10,6 +10,7 @@ ns.ABILITIES = {
         text = "OVERPOWER!", color = { 1, 0.4, 0.1 },
         icon = "Interface\\Icons\\Ability_MeleeDamage",
         description = "Usable for 5 seconds after your target dodges (Battle Stance).",
+        anyStanceLabel = "Also alert in any stance, not just Battle Stance",
         defaults = { sound = "cdm:316723", textY = 180, iconX = 0, iconY = 100 }, -- Warhorn
     },
     {
@@ -337,6 +338,56 @@ local function Check()
 end
 ns.Check = Check
 
+-- Overpower's optional "any stance" alert. Outside Battle Stance Overpower
+-- never reports usable, but the opening itself is tracked as the player's
+-- combo points (power type 4): 1 for the 5 seconds after the target dodges
+-- the player's own attack, 0 otherwise, in any stance. It's normally
+-- readable in combat. If it's ever a secret value, a combo point change
+-- within PAIR_WINDOW of the target dodging counts as a new opening instead
+-- (UNIT_COMBAT reports the dodge about half a second after the point).
+local COMBO_POINTS = (Enum and Enum.PowerType and Enum.PowerType.ComboPoints) or 4
+local PAIR_WINDOW = 1.0
+local comboPoints = 0 -- last readable value
+local lastHiddenComboChange, lastTargetDodge = -math.huge, -math.huge
+
+local function ReadComboPoints()
+    local ok, v = pcall(UnitPower, "player", COMBO_POINTS)
+    if not ok or (issecretvalue and issecretvalue(v)) or type(v) ~= "number" then return nil end
+    return v
+end
+
+local function OverpowerAnyStance()
+    local cfg = ns.Config("overpower")
+    if cfg.enabled and cfg.anyStance then Alert("overpower") end
+end
+
+local function OnComboPointsChanged()
+    local v = ReadComboPoints()
+    if v then
+        local gained = v > 0 and comboPoints == 0
+        comboPoints = v
+        if gained then OverpowerAnyStance() end
+        return
+    end
+    comboPoints = 0
+    local now = GetTime()
+    lastHiddenComboChange = now
+    if now - lastTargetDodge <= PAIR_WINDOW then OverpowerAnyStance() end
+end
+
+local function OnTargetDodge()
+    local now = GetTime()
+    lastTargetDodge = now
+    if now - lastHiddenComboChange <= PAIR_WINDOW then OverpowerAnyStance() end
+end
+
+-- Whether the ability's opening is up: usable, or for Overpower, an opening
+-- in any stance. Keeps the icon up while this is true.
+function ns.IsActive(abilityKey)
+    if abilityKey == "overpower" and comboPoints > 0 then return true end
+    return ns.IsUsable(abilityKey)
+end
+
 local function StartTicker()
     if not ticker then ticker = C_Timer.NewTicker(0.1, Check) end
 end
@@ -351,12 +402,13 @@ local function Refresh()
         st.spellID = FindKnownRank(ability)
         st.wasUsable = ns.IsUsable(ability.key)
     end
+    -- Take the current value without alerting on an opening already up.
+    comboPoints = ReadComboPoints() or 0
 end
 
 -- Revenge's optional "any stance" alert. Outside Defensive Stance Revenge
 -- never reports usable, but UNIT_COMBAT on the player reports the player's
--- own blocks, dodges and parries. (Overpower has no equivalent: nothing on
--- this client reports only the player's own dodged attacks.)
+-- own blocks, dodges and parries.
 local function OnPlayerCombat(action, flagText)
     if issecretvalue and (issecretvalue(action) or issecretvalue(flagText)) then return end
     local cfg = ns.Config("revenge")
@@ -386,7 +438,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
         self:RegisterEvent("PLAYER_REGEN_DISABLED")
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
-        pcall(self.RegisterUnitEvent, self, "UNIT_COMBAT", "player")
+        pcall(self.RegisterUnitEvent, self, "UNIT_COMBAT", "player", "target")
+        pcall(self.RegisterUnitEvent, self, "UNIT_POWER_UPDATE", "player")
         if InCombatLockdown() then StartTicker() end
         return
     end
@@ -403,7 +456,15 @@ frame:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "UNIT_COMBAT" then
         local unit, action, flagText = ...
-        if unit == "player" then OnPlayerCombat(action, flagText) end
+        if issecretvalue and issecretvalue(action) then return end
+        if unit == "player" then
+            OnPlayerCombat(action, flagText)
+        elseif unit == "target" and action == "DODGE" then
+            OnTargetDodge()
+        end
+    elseif event == "UNIT_POWER_UPDATE" then
+        local unit, powerType = ...
+        if unit == "player" and powerType == "COMBO_POINTS" then OnComboPointsChanged() end
     else
         Check()
     end

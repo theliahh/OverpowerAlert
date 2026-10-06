@@ -1,26 +1,52 @@
 local ADDON_NAME, ns = ...
 
--- Overpower ranks, highest first. The highest known rank is watched.
-local OVERPOWER_IDS = { 11585, 11584, 7887, 7384 }
-
--- Warhorn, from the Instruments category.
-local DEFAULT_SOUND = "cdm:316723"
-
-local DEFAULTS = {
-    enabled = true,
-    sound = DEFAULT_SOUND,
-    customSound = "",
-    channel = "Master",
-    showText = true,
-    anyStance = false,
-    throttle = 1.0,
-    textSize = 36,
-    textPos = nil, -- { point, relPoint, x, y }; nil = default spot
-    showIcon = false,
-    iconSize = 64,
-    iconGlow = "proc",
-    iconPos = nil,
+-- Reactive abilities we alert on. Each has its own settings table in
+-- OverpowerAlertDB[key]. Spell IDs are listed highest rank first; the highest
+-- known rank is watched.
+ns.ABILITIES = {
+    {
+        key = "overpower", name = "Overpower",
+        ids = { 11585, 11584, 7887, 7384 },
+        text = "OVERPOWER!", color = { 1, 0.4, 0.1 },
+        icon = "Interface\\Icons\\Ability_MeleeDamage",
+        description = "Usable for 5 seconds after your target dodges (Battle Stance).",
+        defaults = { sound = "cdm:316723", textY = 180, iconX = 0, iconY = 100 }, -- Warhorn
+    },
+    {
+        key = "revenge", name = "Revenge",
+        ids = { 25288, 11601, 11600, 7379, 6574, 6572 },
+        text = "REVENGE!", color = { 1, 0.82, 0 },
+        icon = "Interface\\Icons\\Ability_Warrior_Revenge",
+        description = "Usable for 5 seconds after you block, dodge or parry (Defensive Stance).",
+        anyStanceLabel = "Also alert whenever you block, dodge or parry (any stance)",
+        defaults = { sound = "cdm:353421", textY = 240, iconX = 80, iconY = 100 }, -- Sword Shing
+    },
 }
+ns.ABILITY_BY_KEY = {}
+for _, ability in ipairs(ns.ABILITIES) do ns.ABILITY_BY_KEY[ability.key] = ability end
+
+local function Defaults(ability)
+    return {
+        enabled = true,
+        sound = ability.defaults.sound,
+        customSound = "",
+        channel = "Master",
+        anyStance = false,
+        throttle = 1.0,
+        showText = true,
+        textSize = 36,
+        textPos = nil, -- { point, relPoint, x, y }; nil = default spot
+        showIcon = false,
+        iconSize = 64,
+        iconGlow = "proc",
+        iconPos = nil,
+    }
+end
+
+-- Settings for one ability.
+function ns.Config(abilityKey)
+    return OverpowerAlertDB[abilityKey]
+end
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 ns.LSM = LSM
@@ -174,10 +200,11 @@ function ns.GetSoundLabel(key)
     return cdmLabels[key] or key or "?"
 end
 
-function ns.PlayAlertSound(key)
-    local db = OverpowerAlertDB
-    key = key or db.sound
-    local channel = db.channel or "Master"
+-- Plays an ability's alert sound, or `key` instead when given (menu previews).
+function ns.PlayAlertSound(abilityKey, key)
+    local cfg = ns.Config(abilityKey)
+    key = key or cfg.sound
+    local channel = cfg.channel or "Master"
 
     local kitID = tonumber(key:match("^cdm:(%d+)$"))
     local smName = key:match("^sm:(.+)")
@@ -192,27 +219,74 @@ function ns.PlayAlertSound(key)
             if not PlaySoundFile(value, channel) then PlaySound(value, channel, true) end
         end
     elseif key == "CUSTOM" then
-        local custom = strtrim(db.customSound or "")
+        local custom = strtrim(cfg.customSound or "")
         if custom ~= "" then
             PlaySoundFile(tonumber(custom) or custom, channel)
         end
     end
 end
 
+-- Sound, text and icon, as configured. Ignores the throttle.
+function ns.PreviewAlert(abilityKey)
+    local cfg = ns.Config(abilityKey)
+    ns.PlayAlertSound(abilityKey)
+    if cfg.showText and ns.ShowText then ns.ShowText(abilityKey) end
+    if cfg.showIcon and ns.ShowIcon then ns.ShowIcon(abilityKey) end
+end
+
+--------------------------------------------------------------------------------
+-- Saved variables
+--
+-- Up to 1.1.x, OverpowerAlertDB held Overpower's settings directly. It now
+-- holds one table per ability.
+--------------------------------------------------------------------------------
+
+local LEGACY_KEYS = {
+    "enabled", "sound", "customSound", "channel", "anyStance", "throttle",
+    "showText", "textSize", "textPos", "showIcon", "iconSize", "iconGlow", "iconPos",
+}
+
+local function LoadSettings()
+    local db = OverpowerAlertDB or {}
+    OverpowerAlertDB = db
+
+    if not db.overpower and db.sound ~= nil then
+        local old = {}
+        for _, k in ipairs(LEGACY_KEYS) do
+            old[k] = db[k]
+            db[k] = nil
+        end
+        db.overpower = old
+    end
+
+    for _, ability in ipairs(ns.ABILITIES) do
+        local cfg = db[ability.key] or {}
+        db[ability.key] = cfg
+        for k, v in pairs(Defaults(ability)) do
+            if cfg[k] == nil then cfg[k] = v end
+        end
+        -- Older versions offered a different built-in list (SOUNDKIT names);
+        -- move those selections to the default.
+        if not ns.IsValidSoundKey(cfg.sound) then cfg.sound = ability.defaults.sound end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Detection
 --
--- The combat log isn't available to addons on this client, so we watch
--- Overpower's usability instead: it's a reactive ability that only becomes
--- usable for a few seconds after the target dodges. We alert on the
--- not-usable -> usable transition.
+-- The combat log isn't available to addons on this client, so we watch each
+-- ability's usability instead. Overpower and Revenge are reactive: they only
+-- become usable for a few seconds after a dodge (Overpower) or a block, dodge
+-- or parry (Revenge). We alert on the not-usable -> usable transition.
 --------------------------------------------------------------------------------
 
 local frame = CreateFrame("Frame")
-local overpowerID
-local wasUsable = false
-local lastAlert = 0
+local state = {} -- [abilityKey] = { spellID, wasUsable, lastAlert }
 local ticker
+
+for _, ability in ipairs(ns.ABILITIES) do
+    state[ability.key] = { wasUsable = false, lastAlert = 0 }
+end
 
 local function IsKnown(id)
     if IsPlayerSpell and IsPlayerSpell(id) then return true end
@@ -220,43 +294,48 @@ local function IsKnown(id)
     return false
 end
 
-local function FindOverpower()
-    for _, id in ipairs(OVERPOWER_IDS) do
+local function FindKnownRank(ability)
+    for _, id in ipairs(ability.ids) do
         if IsKnown(id) then return id end
     end
 end
 
-local function IsOverpowerUsable()
-    if not overpowerID then return false end
+function ns.GetSpellID(abilityKey)
+    return state[abilityKey].spellID
+end
+
+function ns.IsUsable(abilityKey)
+    local id = state[abilityKey].spellID
+    if not id then return false end
     local usable, noPower
     if C_Spell and C_Spell.IsSpellUsable then
-        usable, noPower = C_Spell.IsSpellUsable(overpowerID)
+        usable, noPower = C_Spell.IsSpellUsable(id)
     elseif IsUsableSpell then
-        usable, noPower = IsUsableSpell(overpowerID)
+        usable, noPower = IsUsableSpell(id)
     end
-    -- Treat "usable except for rage" as available too; you'll have 5 rage
+    -- Treat "usable except for rage" as available too; you'll have the rage
     -- by the time you react.
     return usable == true or noPower == true
 end
 
-local function Alert()
+local function Alert(abilityKey)
+    local cfg, st = ns.Config(abilityKey), state[abilityKey]
     local now = GetTime()
-    if now - lastAlert < (OverpowerAlertDB.throttle or 1) then return end
-    lastAlert = now
-    ns.PlayAlertSound()
-    if OverpowerAlertDB.showText and ns.ShowText then ns.ShowText() end
-    if OverpowerAlertDB.showIcon and ns.ShowIcon then ns.ShowIcon() end
+    if now - st.lastAlert < (cfg.throttle or 1) then return end
+    st.lastAlert = now
+    ns.PreviewAlert(abilityKey)
 end
 
 local function Check()
-    if not OverpowerAlertDB.enabled then return end
-    local usable = IsOverpowerUsable()
-    if usable and not wasUsable then Alert() end
-    wasUsable = usable
+    for _, ability in ipairs(ns.ABILITIES) do
+        local key = ability.key
+        local st = state[key]
+        local usable = ns.IsUsable(key)
+        if usable and not st.wasUsable and ns.Config(key).enabled then Alert(key) end
+        st.wasUsable = usable
+    end
 end
 ns.Check = Check
-ns.IsOverpowerUsable = IsOverpowerUsable
-ns.GetOverpowerID = function() return overpowerID end
 
 local function StartTicker()
     if not ticker then ticker = C_Timer.NewTicker(0.1, Check) end
@@ -267,21 +346,29 @@ local function StopTicker()
 end
 
 local function Refresh()
-    overpowerID = FindOverpower()
-    wasUsable = IsOverpowerUsable()
+    for _, ability in ipairs(ns.ABILITIES) do
+        local st = state[ability.key]
+        st.spellID = FindKnownRank(ability)
+        st.wasUsable = ns.IsUsable(ability.key)
+    end
+end
+
+-- Revenge's optional "any stance" alert. Outside Defensive Stance Revenge
+-- never reports usable, but UNIT_COMBAT on the player reports the player's
+-- own blocks, dodges and parries. (Overpower has no equivalent: nothing on
+-- this client reports only the player's own dodged attacks.)
+local function OnPlayerCombat(action, flagText)
+    if issecretvalue and (issecretvalue(action) or issecretvalue(flagText)) then return end
+    local cfg = ns.Config("revenge")
+    local avoided = action == "BLOCK" or action == "DODGE" or action == "PARRY"
+        or flagText == "BLOCK" -- partial block
+    if cfg.enabled and cfg.anyStance and avoided then Alert("revenge") end
 end
 
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         if ... ~= ADDON_NAME then return end
-        OverpowerAlertDB = OverpowerAlertDB or {}
-        for k, v in pairs(DEFAULTS) do
-            if OverpowerAlertDB[k] == nil then OverpowerAlertDB[k] = v end
-        end
-        -- Older versions offered a different built-in list (SOUNDKIT names);
-        -- move those selections to the default.
-        local db = OverpowerAlertDB
-        if not ns.IsValidSoundKey(db.sound) then db.sound = DEFAULT_SOUND end
+        LoadSettings()
         if ns.InitDisplay then ns.InitDisplay() end
         if ns.CreateOptions then ns.CreateOptions() end
         self:UnregisterEvent("ADDON_LOADED")
@@ -299,7 +386,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
         self:RegisterEvent("PLAYER_REGEN_DISABLED")
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
-        pcall(self.RegisterUnitEvent, self, "UNIT_COMBAT", "target")
+        pcall(self.RegisterUnitEvent, self, "UNIT_COMBAT", "player")
         if InCombatLockdown() then StartTicker() end
         return
     end
@@ -311,14 +398,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
         StartTicker()
     elseif event == "PLAYER_REGEN_ENABLED" then
         StopTicker()
-        wasUsable = IsOverpowerUsable()
+        for _, ability in ipairs(ns.ABILITIES) do
+            state[ability.key].wasUsable = ns.IsUsable(ability.key)
+        end
     elseif event == "UNIT_COMBAT" then
-        -- Optional: alert on any target dodge even outside Battle Stance,
-        -- where Overpower itself won't report usable.
-        if not (OverpowerAlertDB.enabled and OverpowerAlertDB.anyStance) then return end
-        local _, action = ...
-        if issecretvalue and issecretvalue(action) then return end
-        if action == "DODGE" then Alert() end
+        local unit, action, flagText = ...
+        if unit == "player" then OnPlayerCombat(action, flagText) end
     else
         Check()
     end
@@ -331,22 +416,40 @@ frame:RegisterEvent("PLAYER_LOGIN")
 -- Slash command
 --------------------------------------------------------------------------------
 
+local ABILITY_ALIASES = { op = "overpower", overpower = "overpower", rev = "revenge", revenge = "revenge" }
+
+local function Print(text)
+    print("|cffff6619Overpower Alert|r " .. text)
+end
+
 SLASH_OVERPOWERALERT1 = "/opa"
 SLASH_OVERPOWERALERT2 = "/overpoweralert"
 SlashCmdList.OVERPOWERALERT = function(msg)
-    msg = strlower(strtrim(msg or ""))
-    if msg == "test" then
-        -- Preview the full alert as configured, without the throttle.
-        ns.PlayAlertSound()
-        if OverpowerAlertDB.showText and ns.ShowText then ns.ShowText() end
-        if OverpowerAlertDB.showIcon and ns.ShowIcon then ns.ShowIcon() end
-    elseif msg == "toggle" then
-        OverpowerAlertDB.enabled = not OverpowerAlertDB.enabled
-        print("|cffff6619Overpower Alert|r " .. (OverpowerAlertDB.enabled and "enabled" or "disabled"))
-    elseif msg == "unlock" or msg == "move" then
-        ns.SetUnlocked(nil, true)
-    elseif msg == "lock" then
-        ns.SetUnlocked(nil, false)
+    local cmd, arg = strlower(strtrim(msg or "")):match("^(%S*)%s*(.-)$")
+    local abilityKey = ABILITY_ALIASES[arg]
+    if arg ~= "" and not abilityKey then
+        Print("unknown ability \"" .. arg .. "\" (use overpower or revenge)")
+        return
+    end
+
+    if cmd == "test" then
+        ns.PreviewAlert(abilityKey or "overpower")
+    elseif cmd == "toggle" then
+        local keys = {}
+        for _, ability in ipairs(ns.ABILITIES) do
+            if not abilityKey or abilityKey == ability.key then keys[#keys + 1] = ability.key end
+        end
+        -- With several, turn them all off if any is on, otherwise all on.
+        local anyOn = false
+        for _, k in ipairs(keys) do anyOn = anyOn or ns.Config(k).enabled end
+        for _, k in ipairs(keys) do
+            ns.Config(k).enabled = not anyOn
+            Print(ns.ABILITY_BY_KEY[k].name .. " alert " .. (anyOn and "disabled" or "enabled"))
+        end
+    elseif cmd == "unlock" or cmd == "move" then
+        ns.SetUnlocked(abilityKey, nil, true)
+    elseif cmd == "lock" then
+        ns.SetUnlocked(abilityKey, nil, false)
     elseif ns.OpenOptions then
         ns.OpenOptions()
     end

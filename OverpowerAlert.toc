@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: Overpower Alert
-## Notes: Plays a sound when Overpower becomes usable after your target dodges.
+## Notes: Alerts you when Overpower or Revenge becomes usable.
 ## Author: Theliahh
 ## Version: @project-version@
 ## SavedVariables: OverpowerAlertDB

@@ -33,7 +33,6 @@ local function Defaults(ability)
         customSound = "",
         channel = "Master",
         anyStance = false,
-        throttle = 1.0,
         showText = true,
         textSize = 36,
         textPos = nil, -- { point, relPoint, x, y }; nil = default spot
@@ -227,7 +226,7 @@ function ns.PlayAlertSound(abilityKey, key)
     end
 end
 
--- Sound, text and icon, as configured. Ignores the throttle.
+-- Sound, text and icon, as configured. Always plays (used by alerts and /opa test).
 function ns.PreviewAlert(abilityKey)
     local cfg = ns.Config(abilityKey)
     ns.PlayAlertSound(abilityKey)
@@ -282,11 +281,11 @@ end
 --------------------------------------------------------------------------------
 
 local frame = CreateFrame("Frame")
-local state = {} -- [abilityKey] = { spellID, wasUsable, lastAlert }
+local state = {} -- [abilityKey] = { spellID, wasUsable, openUntil }
 local ticker
 
 for _, ability in ipairs(ns.ABILITIES) do
-    state[ability.key] = { wasUsable = false, lastAlert = 0 }
+    state[ability.key] = { wasUsable = false, openUntil = 0 }
 end
 
 local function IsKnown(id)
@@ -319,12 +318,52 @@ function ns.IsUsable(abilityKey)
     return usable == true or noPower == true
 end
 
-local function Alert(abilityKey)
-    local cfg, st = ns.Config(abilityKey), state[abilityKey]
-    local now = GetTime()
-    if now - st.lastAlert < (cfg.throttle or 1) then return end
-    st.lastAlert = now
+-- One alert per opening. After a trigger the ability stays available for
+-- about 5 seconds, and during that time several signals can report the same
+-- opening: the any-stance trigger, then the ability turning usable when the
+-- player swaps into its stance, or usable again after swapping out and back.
+-- So an alert opens a window, and nothing alerts for that ability again until
+-- the window closes: OPENING seconds after the last real trigger, when the
+-- player casts the ability, or (Overpower) when the combo point goes away.
+local OPENING = 5.0   -- how long the ability stays available after a trigger
+local EVENT_LAG = 0.5 -- extra time before a new alert, for late events
+
+local function OpenWindow(abilityKey)
+    state[abilityKey].openUntil = GetTime() + OPENING + EVENT_LAG
+end
+
+local function InOpening(abilityKey)
+    return GetTime() < state[abilityKey].openUntil
+end
+
+local function EndOpening(abilityKey)
+    state[abilityKey].openUntil = 0
+end
+
+-- The ability just became usable. Alert unless it's an opening we've already
+-- alerted for (e.g. the player swapped stances). Doesn't extend the window:
+-- swapping stances isn't a new trigger.
+local function OnBecameUsable(abilityKey)
+    if not ns.Config(abilityKey).enabled or InOpening(abilityKey) then return end
+    OpenWindow(abilityKey)
     ns.PreviewAlert(abilityKey)
+end
+
+-- A real trigger happened (block, dodge or parry for Revenge; a new combo
+-- point for Overpower). It refreshes an opening we've alerted for. Otherwise
+-- it starts a new one and alerts, if the any-stance option asks for that.
+local function OnTrigger(abilityKey, alertNow)
+    if InOpening(abilityKey) then
+        OpenWindow(abilityKey)
+    elseif alertNow then
+        OpenWindow(abilityKey)
+        ns.PreviewAlert(abilityKey)
+    end
+end
+
+local function AnyStanceOn(abilityKey)
+    local cfg = ns.Config(abilityKey)
+    return cfg.enabled and cfg.anyStance
 end
 
 local function Check()
@@ -332,7 +371,7 @@ local function Check()
         local key = ability.key
         local st = state[key]
         local usable = ns.IsUsable(key)
-        if usable and not st.wasUsable and ns.Config(key).enabled then Alert(key) end
+        if usable and not st.wasUsable then OnBecameUsable(key) end
         st.wasUsable = usable
     end
 end
@@ -356,9 +395,8 @@ local function ReadComboPoints()
     return v
 end
 
-local function OverpowerAnyStance()
-    local cfg = ns.Config("overpower")
-    if cfg.enabled and cfg.anyStance then Alert("overpower") end
+local function OverpowerTriggered()
+    OnTrigger("overpower", AnyStanceOn("overpower"))
 end
 
 local function OnComboPointsChanged()
@@ -366,24 +404,47 @@ local function OnComboPointsChanged()
     if v then
         local gained = v > 0 and comboPoints == 0
         comboPoints = v
-        if gained then OverpowerAnyStance() end
+        if gained then
+            OverpowerTriggered()
+        elseif v == 0 then
+            -- Used, expired or the target changed: the opening is over.
+            EndOpening("overpower")
+        end
         return
     end
     comboPoints = 0
     local now = GetTime()
     lastHiddenComboChange = now
-    if now - lastTargetDodge <= PAIR_WINDOW then OverpowerAnyStance() end
+    if now - lastTargetDodge <= PAIR_WINDOW then OverpowerTriggered() end
 end
 
 local function OnTargetDodge()
     local now = GetTime()
     lastTargetDodge = now
-    if now - lastHiddenComboChange <= PAIR_WINDOW then OverpowerAnyStance() end
+    if now - lastHiddenComboChange <= PAIR_WINDOW then OverpowerTriggered() end
 end
 
--- Whether the ability's opening is up: usable, or for Overpower, an opening
--- in any stance. Keeps the icon up while this is true.
+-- Casting the ability uses up its opening, so the next one alerts again,
+-- and its text and icon go away.
+local spellOwner = {} -- [spellID] = abilityKey
+for _, ability in ipairs(ns.ABILITIES) do
+    for _, id in ipairs(ability.ids) do spellOwner[id] = ability.key end
+end
+
+local function OnSpellCast(spellID)
+    if issecretvalue and issecretvalue(spellID) then return end
+    local key = spellOwner[spellID]
+    if not key then return end
+    EndOpening(key)
+    if ns.HideAlert then ns.HideAlert(key) end
+end
+
+-- Whether the ability's opening is up, in any stance. Keeps the icon up
+-- while this is true.
 function ns.IsActive(abilityKey)
+    -- An opening we alerted for, still within its 5 seconds. This covers any
+    -- stance: outside its own stance the ability never reports usable.
+    if GetTime() < state[abilityKey].openUntil - EVENT_LAG then return true end
     if abilityKey == "overpower" and comboPoints > 0 then return true end
     return ns.IsUsable(abilityKey)
 end
@@ -406,15 +467,15 @@ local function Refresh()
     comboPoints = ReadComboPoints() or 0
 end
 
--- Revenge's optional "any stance" alert. Outside Defensive Stance Revenge
--- never reports usable, but UNIT_COMBAT on the player reports the player's
--- own blocks, dodges and parries.
+-- Revenge's trigger. Outside Defensive Stance Revenge never reports usable,
+-- but UNIT_COMBAT on the player reports the player's own blocks, dodges and
+-- parries. These alert only with the any-stance option, but always refresh
+-- an opening we've already alerted for.
 local function OnPlayerCombat(action, flagText)
     if issecretvalue and (issecretvalue(action) or issecretvalue(flagText)) then return end
-    local cfg = ns.Config("revenge")
     local avoided = action == "BLOCK" or action == "DODGE" or action == "PARRY"
         or flagText == "BLOCK" -- partial block
-    if cfg.enabled and cfg.anyStance and avoided then Alert("revenge") end
+    if avoided then OnTrigger("revenge", AnyStanceOn("revenge")) end
 end
 
 frame:SetScript("OnEvent", function(self, event, ...)
@@ -440,6 +501,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
         pcall(self.RegisterUnitEvent, self, "UNIT_COMBAT", "player", "target")
         pcall(self.RegisterUnitEvent, self, "UNIT_POWER_UPDATE", "player")
+        pcall(self.RegisterUnitEvent, self, "UNIT_SPELLCAST_SUCCEEDED", "player")
         if InCombatLockdown() then StartTicker() end
         return
     end
@@ -465,6 +527,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "UNIT_POWER_UPDATE" then
         local unit, powerType = ...
         if unit == "player" and powerType == "COMBO_POINTS" then OnComboPointsChanged() end
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unit, _, spellID = ...
+        if unit == "player" then OnSpellCast(spellID) end
     else
         Check()
     end

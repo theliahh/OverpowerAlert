@@ -6,10 +6,10 @@ local ADDON_NAME, ns = ...
 
 local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
 
-local HOLD, FADE = 1.2, 0.5
--- Overpower and Revenge stay usable for up to 5 seconds after the trigger;
--- the icon stays up while the ability is usable, capped at this.
-local ICON_MAX_HOLD = 5
+-- The text and icon show for at least HOLD seconds, then for as long as the
+-- ability's opening lasts (ns.IsActive). Previews with no opening just show
+-- for HOLD.
+local HOLD, FADE = 1.2, 0.15
 local FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 local KINDS = { "text", "icon" }
 
@@ -192,8 +192,9 @@ end
 function ns.InitDisplay()
     for _, ability in ipairs(ns.ABILITIES) do
         local d = ability.defaults
+        local function isActive() return ns.IsActive(ability.key) end
 
-        local textEl = CreateElement(ability, "text", 0, d.textY)
+        local textEl = CreateElement(ability, "text", 0, d.textY, isActive)
         local label = textEl.frame:CreateFontString(nil, "OVERLAY")
         label:SetPoint("CENTER")
         label:SetTextColor(unpack(ability.color))
@@ -203,9 +204,7 @@ function ns.InitDisplay()
         ApplyPosition(textEl)
         ns.ApplyTextStyle(ability.key)
 
-        local iconEl = CreateElement(ability, "icon", d.iconX, d.iconY, function(t)
-            return t < ICON_MAX_HOLD and ns.IsActive(ability.key)
-        end)
+        local iconEl = CreateElement(ability, "icon", d.iconX, d.iconY, isActive)
         local f = iconEl.frame
         local border = f:CreateTexture(nil, "BACKGROUND")
         border:SetPoint("TOPLEFT", -1, 1)
@@ -222,6 +221,18 @@ function ns.InitDisplay()
         f:HookScript("OnHide", StopGlow)
         ApplyPosition(iconEl)
         ns.ApplyIconStyle(ability.key)
+    end
+end
+
+-- Fades out an ability's text and icon now, e.g. once the player has used
+-- the ability. (The game still reports Revenge as usable after it's cast,
+-- since usability ignores the cooldown, so the icon wouldn't drop by itself.)
+function ns.HideAlert(abilityKey)
+    for _, kind in ipairs(KINDS) do
+        local el = Element(abilityKey, kind)
+        if el and el.frame:IsShown() and not el.unlocked and not el.fading then
+            StartFade(el)
+        end
     end
 end
 

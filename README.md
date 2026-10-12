@@ -1,6 +1,6 @@
 # Overpower Alert
 
-A World of Warcraft Forever addon for Warriors that alerts you the moment **Overpower** or **Revenge** becomes usable. Each alert can play a sound, flash text on screen and pop up the spell icon.
+A World of Warcraft Forever addon for Warriors that alerts you the moment **Overpower** or **Revenge** becomes usable. Each alert can play a sound, show text on screen and pop up the spell icon.
 
 ## Install
 
@@ -32,7 +32,8 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
   Choosing a sound plays it, so you can try several in a row.
 - **Sound channel:** Master, Sound Effects, Dialog, Ambience or Music.
 - **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size.
-- **Spell icon** (off by default): pops up the ability's icon and keeps it up while the ability is usable. Set its size and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
+- **Spell icon** (off by default): pops up the ability's icon. Set its size and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
+- **How long they stay up:** the text and icon stay up while the ability's opening lasts, in any stance: 5 seconds after your target's dodge for Overpower, or after your last block, dodge or parry for Revenge. They fade as soon as you use the ability.
 - **Moving the text or icon:** click **Unlock Text** or **Unlock Icon**, drag the highlighted box where you want it, then right-click it to lock. **Reset Position** puts it back in the default spot, and **Preview** shows it as it will appear.
 
 ## Slash commands

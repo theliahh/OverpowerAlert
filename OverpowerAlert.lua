@@ -9,30 +9,46 @@ ns.ABILITIES = {
         ids = { 11585, 11584, 7887, 7384 },
         text = "OVERPOWER!", color = { 1, 0.4, 0.1 },
         icon = "Interface\\Icons\\Ability_MeleeDamage",
-        description = "Usable for 5 seconds after your target dodges (Battle Stance).",
-        anyStanceLabel = "Also alert in any stance, not just Battle Stance",
-        defaults = { sound = "cdm:316723", textY = 180, iconX = 0, iconY = 100 }, -- Warhorn
+        description = "Available for 5 seconds after your target dodges your attack. Can only be cast in Battle Stance.",
+        defaults = {
+            sound = "cdm:316723", -- Warhorn
+            stances = { battle = true, defensive = false, berserker = false },
+            textY = 180, iconX = 0, iconY = 100,
+        },
     },
     {
         key = "revenge", name = "Revenge",
         ids = { 25288, 11601, 11600, 7379, 6574, 6572 },
         text = "REVENGE!", color = { 1, 0.82, 0 },
         icon = "Interface\\Icons\\Ability_Warrior_Revenge",
-        description = "Usable for 5 seconds after you block, dodge or parry (Defensive Stance).",
-        anyStanceLabel = "Also alert whenever you block, dodge or parry (any stance)",
-        defaults = { sound = "cdm:353421", textY = 240, iconX = 80, iconY = 100 }, -- Sword Shing
+        description = "Available for 5 seconds after you block, dodge or parry. Can only be cast in Defensive Stance.",
+        defaults = {
+            sound = "cdm:353421", -- Sword Shing
+            stances = { battle = false, defensive = true, berserker = false },
+            textY = 240, iconX = 80, iconY = 100,
+        },
     },
 }
 ns.ABILITY_BY_KEY = {}
 for _, ability in ipairs(ns.ABILITIES) do ns.ABILITY_BY_KEY[ability.key] = ability end
 
+-- Warrior stances, in stance bar order. Each ability alerts only in the
+-- stances ticked in its settings (cfg.stances[key]).
+ns.STANCES = {
+    { key = "battle",    name = "Battle Stance",    spellID = 2457 },
+    { key = "defensive", name = "Defensive Stance", spellID = 71 },
+    { key = "berserker", name = "Berserker Stance", spellID = 2458 },
+}
+
 local function Defaults(ability)
+    local stances = {}
+    for k, v in pairs(ability.defaults.stances) do stances[k] = v end
     return {
         enabled = true,
         sound = ability.defaults.sound,
         customSound = "",
         channel = "Master",
-        anyStance = false,
+        stances = stances,
         showText = true,
         textSize = 36,
         textPos = nil, -- { point, relPoint, x, y }; nil = default spot
@@ -262,8 +278,20 @@ local function LoadSettings()
     for _, ability in ipairs(ns.ABILITIES) do
         local cfg = db[ability.key] or {}
         db[ability.key] = cfg
-        for k, v in pairs(Defaults(ability)) do
+        -- Before per-stance settings there was one "any stance" checkbox;
+        -- ticked meant every stance.
+        if cfg.stances == nil and cfg.anyStance then
+            cfg.stances = { battle = true, defensive = true, berserker = true }
+        end
+        cfg.anyStance = nil
+        local defaults = Defaults(ability)
+        for k, v in pairs(defaults) do
             if cfg[k] == nil then cfg[k] = v end
+        end
+        for _, stance in ipairs(ns.STANCES) do
+            if type(cfg.stances[stance.key]) ~= "boolean" then
+                cfg.stances[stance.key] = defaults.stances[stance.key]
+            end
         end
         -- Older versions offered a different built-in list (SOUNDKIT names);
         -- move those selections to the default.
@@ -274,18 +302,33 @@ end
 --------------------------------------------------------------------------------
 -- Detection
 --
--- The combat log isn't available to addons on this client, so we watch each
--- ability's usability instead. Overpower and Revenge are reactive: they only
--- become usable for a few seconds after a dodge (Overpower) or a block, dodge
--- or parry (Revenge). We alert on the not-usable -> usable transition.
+-- The combat log isn't available to addons on this client, so openings are
+-- pieced together from other signals:
+--   * Revenge: UNIT_COMBAT on the player reports the player's own blocks,
+--     dodges and parries, in any stance.
+--   * Overpower: the opening is the player's combo point (power type 4): 1 for
+--     the 5 seconds after the target dodges the player's attack, in any stance.
+--   * Both: C_Spell.IsSpellUsable turns true during an opening, but only in
+--     the ability's own stance. Used as a backup signal.
+-- An opening lasts OPENING seconds from its last trigger, until the player
+-- casts the ability, or (Overpower) until the combo point goes away.
+--
+-- Each opening alerts at most once: the first moment it's up while the player
+-- is in a stance ticked for that ability and the ability is off cooldown. So
+-- switching into a ticked stance partway through an opening alerts then, and
+-- switching stances again doesn't alert a second time.
 --------------------------------------------------------------------------------
 
+local OPENING = 5.0   -- how long the ability stays available after a trigger
+local EVENT_LAG = 0.5 -- a "usable" signal this soon after an opening ended belongs to it
+
 local frame = CreateFrame("Frame")
-local state = {} -- [abilityKey] = { spellID, wasUsable, openUntil }
+-- [abilityKey] = { spellID, wasUsable, activeUntil, alerted, consumedUntil }
+local state = {}
 local ticker
 
 for _, ability in ipairs(ns.ABILITIES) do
-    state[ability.key] = { wasUsable = false, openUntil = 0 }
+    state[ability.key] = { wasUsable = false, activeUntil = 0, alerted = false, consumedUntil = 0 }
 end
 
 local function IsKnown(id)
@@ -298,6 +341,10 @@ local function FindKnownRank(ability)
     for _, id in ipairs(ability.ids) do
         if IsKnown(id) then return id end
     end
+end
+
+local function Readable(v)
+    return not (issecretvalue and issecretvalue(v))
 end
 
 function ns.GetSpellID(abilityKey)
@@ -318,52 +365,78 @@ function ns.IsUsable(abilityKey)
     return usable == true or noPower == true
 end
 
--- One alert per opening. After a trigger the ability stays available for
--- about 5 seconds, and during that time several signals can report the same
--- opening: the any-stance trigger, then the ability turning usable when the
--- player swaps into its stance, or usable again after swapping out and back.
--- So an alert opens a window, and nothing alerts for that ability again until
--- the window closes: OPENING seconds after the last real trigger, when the
--- player casts the ability, or (Overpower) when the combo point goes away.
-local OPENING = 5.0   -- how long the ability stays available after a trigger
-local EVENT_LAG = 0.5 -- extra time before a new alert, for late events
+-- Whether the ability is on its own cooldown (not just the global cooldown).
+-- If the game won't say, assume it isn't.
+local function OnCooldown(abilityKey)
+    local id = state[abilityKey].spellID
+    if not (id and C_Spell and C_Spell.GetSpellCooldown) then return false end
+    local ok, info = pcall(C_Spell.GetSpellCooldown, id)
+    if not ok or type(info) ~= "table" then return false end
+    local active, onGCD = info.isActive, info.isOnGCD
+    if active ~= nil and Readable(active) and Readable(onGCD) then
+        return active == true and onGCD ~= true
+    end
+    local duration = info.duration
+    return type(duration) == "number" and Readable(duration) and duration > 1.6
+end
 
-local function OpenWindow(abilityKey)
-    state[abilityKey].openUntil = GetTime() + OPENING + EVENT_LAG
+-- The stance the player is in ("battle", "defensive", "berserker"), or nil.
+local STANCE_BY_SPELL = {}
+for _, stance in ipairs(ns.STANCES) do STANCE_BY_SPELL[stance.spellID] = stance.key end
+
+function ns.CurrentStance()
+    local index = GetShapeshiftForm and GetShapeshiftForm()
+    if type(index) ~= "number" or not Readable(index) or index == 0 then return nil end
+    if GetShapeshiftFormInfo then
+        local _, _, _, spellID = GetShapeshiftFormInfo(index)
+        if Readable(spellID) and STANCE_BY_SPELL[spellID] then return STANCE_BY_SPELL[spellID] end
+    end
+    -- Stance bar order; warriors learn the stances in this order.
+    return ns.STANCES[index] and ns.STANCES[index].key
 end
 
 local function InOpening(abilityKey)
-    return GetTime() < state[abilityKey].openUntil
+    return GetTime() < state[abilityKey].activeUntil
 end
 
 local function EndOpening(abilityKey)
-    state[abilityKey].openUntil = 0
+    local st = state[abilityKey]
+    st.activeUntil, st.alerted = 0, false
 end
 
--- The ability just became usable. Alert unless it's an opening we've already
--- alerted for (e.g. the player swapped stances). Doesn't extend the window:
--- swapping stances isn't a new trigger.
-local function OnBecameUsable(abilityKey)
-    if not ns.Config(abilityKey).enabled or InOpening(abilityKey) then return end
-    OpenWindow(abilityKey)
+-- Alert for the current opening if it hasn't been yet and everything allows
+-- it. Called whenever something relevant changes, and on a timer in combat.
+local function MaybeAlert(abilityKey)
+    local st, cfg = state[abilityKey], ns.Config(abilityKey)
+    if st.alerted or not st.spellID or not cfg.enabled or not InOpening(abilityKey) then return end
+    local stance = ns.CurrentStance()
+    if not (stance and cfg.stances[stance]) then return end
+    if OnCooldown(abilityKey) then return end
+    st.alerted = true
     ns.PreviewAlert(abilityKey)
 end
 
--- A real trigger happened (block, dodge or parry for Revenge; a new combo
--- point for Overpower). It refreshes an opening we've alerted for. Otherwise
--- it starts a new one and alerts, if the any-stance option asks for that.
-local function OnTrigger(abilityKey, alertNow)
-    if InOpening(abilityKey) then
-        OpenWindow(abilityKey)
-    elseif alertNow then
-        OpenWindow(abilityKey)
-        ns.PreviewAlert(abilityKey)
-    end
+-- A real trigger (block, dodge or parry for Revenge; a new combo point for
+-- Overpower): starts a new opening or extends the current one.
+local function OnTrigger(abilityKey)
+    local st = state[abilityKey]
+    if not InOpening(abilityKey) then st.alerted = false end
+    st.activeUntil = GetTime() + OPENING
+    MaybeAlert(abilityKey)
 end
 
-local function AnyStanceOn(abilityKey)
-    local cfg = ns.Config(abilityKey)
-    return cfg.enabled and cfg.anyStance
+-- The ability just became usable. Normally that's an opening we already know
+-- about (the player switched into its stance). It only starts one if we
+-- missed the trigger, and never right after one ended or was used up: Revenge
+-- stays "usable" after it's cast, since usability ignores the cooldown.
+local function OnBecameUsable(abilityKey)
+    local st, now = state[abilityKey], GetTime()
+    if not InOpening(abilityKey) then
+        if now < st.activeUntil + EVENT_LAG or now < st.consumedUntil then return end
+        st.alerted = false
+        st.activeUntil = now + OPENING
+    end
+    MaybeAlert(abilityKey)
 end
 
 local function Check()
@@ -373,17 +446,16 @@ local function Check()
         local usable = ns.IsUsable(key)
         if usable and not st.wasUsable then OnBecameUsable(key) end
         st.wasUsable = usable
+        -- Stance changes, cooldowns ending, settings changes.
+        MaybeAlert(key)
     end
 end
 ns.Check = Check
 
--- Overpower's optional "any stance" alert. Outside Battle Stance Overpower
--- never reports usable, but the opening itself is tracked as the player's
--- combo points (power type 4): 1 for the 5 seconds after the target dodges
--- the player's own attack, 0 otherwise, in any stance. It's normally
--- readable in combat. If it's ever a secret value, a combo point change
--- within PAIR_WINDOW of the target dodging counts as a new opening instead
--- (UNIT_COMBAT reports the dodge about half a second after the point).
+-- Overpower: the opening is tracked as the player's combo points. It's
+-- normally readable in combat. If it's ever a secret value, a combo point
+-- change within PAIR_WINDOW of the target dodging counts as a new opening
+-- instead (UNIT_COMBAT reports the dodge about half a second after the point).
 local COMBO_POINTS = (Enum and Enum.PowerType and Enum.PowerType.ComboPoints) or 4
 local PAIR_WINDOW = 1.0
 local comboPoints = 0 -- last readable value
@@ -391,12 +463,8 @@ local lastHiddenComboChange, lastTargetDodge = -math.huge, -math.huge
 
 local function ReadComboPoints()
     local ok, v = pcall(UnitPower, "player", COMBO_POINTS)
-    if not ok or (issecretvalue and issecretvalue(v)) or type(v) ~= "number" then return nil end
+    if not ok or not Readable(v) or type(v) ~= "number" then return nil end
     return v
-end
-
-local function OverpowerTriggered()
-    OnTrigger("overpower", AnyStanceOn("overpower"))
 end
 
 local function OnComboPointsChanged()
@@ -405,7 +473,7 @@ local function OnComboPointsChanged()
         local gained = v > 0 and comboPoints == 0
         comboPoints = v
         if gained then
-            OverpowerTriggered()
+            OnTrigger("overpower")
         elseif v == 0 then
             -- Used, expired or the target changed: the opening is over.
             EndOpening("overpower")
@@ -415,38 +483,45 @@ local function OnComboPointsChanged()
     comboPoints = 0
     local now = GetTime()
     lastHiddenComboChange = now
-    if now - lastTargetDodge <= PAIR_WINDOW then OverpowerTriggered() end
+    if now - lastTargetDodge <= PAIR_WINDOW then OnTrigger("overpower") end
 end
 
 local function OnTargetDodge()
     local now = GetTime()
     lastTargetDodge = now
-    if now - lastHiddenComboChange <= PAIR_WINDOW then OverpowerTriggered() end
+    if now - lastHiddenComboChange <= PAIR_WINDOW then OnTrigger("overpower") end
 end
 
--- Casting the ability uses up its opening, so the next one alerts again,
--- and its text and icon go away.
+-- Revenge: the player's own blocks, dodges and parries.
+local function OnPlayerCombat(action, flagText)
+    if not (Readable(action) and Readable(flagText)) then return end
+    local avoided = action == "BLOCK" or action == "DODGE" or action == "PARRY"
+        or flagText == "BLOCK" -- partial block
+    if avoided then OnTrigger("revenge") end
+end
+
+-- Casting the ability uses up its opening and hides its text and icon. The
+-- next real trigger starts a new opening; until this one would have run out,
+-- the ability turning usable again (stance switch) doesn't.
 local spellOwner = {} -- [spellID] = abilityKey
 for _, ability in ipairs(ns.ABILITIES) do
     for _, id in ipairs(ability.ids) do spellOwner[id] = ability.key end
 end
 
 local function OnSpellCast(spellID)
-    if issecretvalue and issecretvalue(spellID) then return end
+    if not Readable(spellID) then return end
     local key = spellOwner[spellID]
     if not key then return end
     EndOpening(key)
+    state[key].consumedUntil = GetTime() + OPENING
     if ns.HideAlert then ns.HideAlert(key) end
 end
 
--- Whether the ability's opening is up, in any stance. Keeps the icon up
--- while this is true.
+-- Whether the ability's opening is up, in any stance. Keeps the text and icon
+-- up while this is true.
 function ns.IsActive(abilityKey)
-    -- An opening we alerted for, still within its 5 seconds. This covers any
-    -- stance: outside its own stance the ability never reports usable.
-    if GetTime() < state[abilityKey].openUntil - EVENT_LAG then return true end
-    if abilityKey == "overpower" and comboPoints > 0 then return true end
-    return ns.IsUsable(abilityKey)
+    if InOpening(abilityKey) then return true end
+    return abilityKey == "overpower" and comboPoints > 0
 end
 
 local function StartTicker()
@@ -467,17 +542,6 @@ local function Refresh()
     comboPoints = ReadComboPoints() or 0
 end
 
--- Revenge's trigger. Outside Defensive Stance Revenge never reports usable,
--- but UNIT_COMBAT on the player reports the player's own blocks, dodges and
--- parries. These alert only with the any-stance option, but always refresh
--- an opening we've already alerted for.
-local function OnPlayerCombat(action, flagText)
-    if issecretvalue and (issecretvalue(action) or issecretvalue(flagText)) then return end
-    local avoided = action == "BLOCK" or action == "DODGE" or action == "PARRY"
-        or flagText == "BLOCK" -- partial block
-    if avoided then OnTrigger("revenge", AnyStanceOn("revenge")) end
-end
-
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         if ... ~= ADDON_NAME then return end
@@ -494,6 +558,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         Refresh()
         self:RegisterEvent("SPELLS_CHANGED")
         self:RegisterEvent("SPELL_UPDATE_USABLE")
+        self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
         self:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
         self:RegisterEvent("PLAYER_TARGET_CHANGED")
         self:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
@@ -509,16 +574,14 @@ frame:SetScript("OnEvent", function(self, event, ...)
     if event == "SPELLS_CHANGED" then
         Refresh()
     elseif event == "PLAYER_REGEN_DISABLED" then
-        -- Usability events can lag; poll lightly while in combat as a backstop.
+        -- Events can lag; check lightly while in combat as a backstop.
         StartTicker()
     elseif event == "PLAYER_REGEN_ENABLED" then
         StopTicker()
-        for _, ability in ipairs(ns.ABILITIES) do
-            state[ability.key].wasUsable = ns.IsUsable(ability.key)
-        end
+        Check()
     elseif event == "UNIT_COMBAT" then
         local unit, action, flagText = ...
-        if issecretvalue and issecretvalue(action) then return end
+        if not Readable(action) then return end
         if unit == "player" then
             OnPlayerCombat(action, flagText)
         elseif unit == "target" and action == "DODGE" then

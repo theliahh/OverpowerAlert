@@ -87,17 +87,35 @@ local function BuildAbilityPage(content, ability)
 
     local enabled = CreateCheckbox(content, "Enable " .. ability.name .. " alert", abilityKey, "enabled", desc, -10)
     enabled:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", -4, -10)
-    -- Only abilities with a reliable out-of-stance signal offer this.
-    local lastCheckbox = enabled
-    if ability.anyStanceLabel then
-        lastCheckbox = CreateCheckbox(content, ability.anyStanceLabel, abilityKey, "anyStance", enabled, -4)
+    -- Which stances to alert in: one checkbox per stance, in a row.
+    local stanceLabel = Label(content, "Alert in:", "GameFontHighlight")
+    stanceLabel:SetPoint("TOPLEFT", enabled, "BOTTOMLEFT", 4, -10)
+    local prevText
+    for _, stance in ipairs(ns.STANCES) do
+        local cb = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+        if prevText then
+            cb:SetPoint("LEFT", prevText, "RIGHT", 16, 0)
+        else
+            cb:SetPoint("LEFT", stanceLabel, "RIGHT", 8, 0)
+        end
+        local text = cb.Text or cb:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        text:SetPoint("LEFT", cb, "RIGHT", 2, 1)
+        text:SetText(stance.name)
+        cb:SetScript("OnShow", function(self) self:SetChecked(cfg().stances[stance.key]) end)
+        cb:SetScript("OnClick", function(self) cfg().stances[stance.key] = self:GetChecked() and true or false end)
+        prevText = text
     end
+
+    local stanceHint = Label(content,
+        "Alerts once per opening, the first moment you're in a ticked stance while it's up.",
+        "GameFontDisableSmall")
+    stanceHint:SetPoint("TOPLEFT", stanceLabel, "BOTTOMLEFT", 0, -12)
 
     ---------------------------------------------------------------------------
     -- Sound
     ---------------------------------------------------------------------------
     local soundLabel = Label(content, "Alert sound")
-    soundLabel:SetPoint("TOPLEFT", lastCheckbox, "BOTTOMLEFT", 4, -20)
+    soundLabel:SetPoint("TOPLEFT", stanceHint, "BOTTOMLEFT", 0, -20)
 
     local customBox
     local soundDD = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")

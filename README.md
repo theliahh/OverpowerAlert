@@ -5,25 +5,28 @@ A World of Warcraft Forever addon for Warriors that alerts you the moment **Over
 ## Install
 
 - **Wago:** install [Overpower Alert on Wago Addons](https://addons.wago.io/addons/overpoweralert) with the Wago app.
+- **Curseforge:** install [Overpower Alert on Curseforge Addons](https://www.curseforge.com/wow/addons/overpoweralert) with the Curseforge or [WowUp with Curseforge](https://wowup.io/) app.
 - **Manually:** download `OverpowerAlert-<version>-forever.zip` from the [latest release](https://github.com/theliahh/OverpowerAlert/releases/latest) and extract it into `World of Warcraft\<game folder>\Interface\AddOns\`. You should end up with an `AddOns\OverpowerAlert\OverpowerAlert.toc` file.
 
 ## Usage
 
-The addon works on its own once installed. Both alerts are on by default, and each fires once every time its ability becomes usable:
+The addon works on its own once installed. Both alerts are on by default, and each fires once per opening:
 
-- **Overpower:** usable for 5 seconds after your target dodges. It can only be used in Battle Stance, so that's the only stance where the normal alert fires.
-- **Revenge:** usable for 5 seconds after you block, dodge or parry. It can only be used in Defensive Stance, so that's the only stance where the normal alert fires.
+- **Overpower:** available for 5 seconds after your target dodges *your* attack (other players' dodged attacks don't count). It can only be cast in Battle Stance.
+- **Revenge:** available for 5 seconds after you block, dodge or parry. It can only be cast in Defensive Stance.
 
-Each ability also has an "any stance" option (off by default):
+You choose which stances each ability alerts in: Battle, Defensive and Berserker Stance each have a checkbox. By default Overpower alerts in Battle Stance and Revenge in Defensive Stance, the stances they can be cast in. Tick other stances to hear about an opening there too, so you can switch.
 
-- **Overpower:** alerts when your target dodges *your* attack, in any stance, not just Battle Stance. Other players' dodged attacks don't count. With the icon turned on, it stays up for the whole 5-second opening.
-- **Revenge:** alerts whenever you block, dodge or parry, in any stance.
+- The alert plays the first moment an opening is up while you're in a ticked stance. If it happens in an unticked stance and you switch into a ticked one before it runs out, it alerts then.
+- Each opening only alerts once, however much you switch stances.
+- If the ability is on cooldown, the alert waits until it's ready, as long as the opening is still up.
 
 ## Options
 
 Open the options with `/opa`, or from **Game Menu → Options → AddOns → Overpower Alert**. There's a tab for each ability, and every setting below is set separately for each one.
 
 - **Enable:** turn that ability's alert on or off.
+- **Alert in:** the stances to alert in (see above).
 - **Alert sound:** pick from:
   - **Cooldown Manager sounds:** the same 93 sounds Blizzard's Cooldown Manager offers for its alerts, in the same categories (Animals, Devices, Impacts, Instruments, Short, Warcraft II, Warcraft III). The defaults are Warhorn for Overpower and Sword Shing for Revenge.
   - **Shared Media:** every sound other addons share through LibSharedMedia, such as BigWigs, WeakAuras or SharedMedia sound packs. It's empty until you install one of those.
@@ -49,9 +52,13 @@ Commands that take an ability accept `overpower` (or `op`) or `revenge` (or `rev
 
 ## How it works
 
-On WoW Forever's client, addons can't read the combat log, so the addon can't see dodges, blocks or parries directly. Instead it watches Overpower and Revenge themselves. Each only becomes usable just after its trigger, so the addon alerts when one switches from unusable to usable. It picks up whichever rank you've learned.
+On WoW Forever's client, addons can't read the combat log, so the addon pieces each opening together from other signals:
 
-For Overpower's "any stance" option, the addon uses a quirk carried over from the original game: an Overpower opening is tracked as a hidden combo point on your character, which appears when your target dodges your attack and lasts 5 seconds, whatever stance you're in.
+- **Revenge:** the game reports your own blocks, dodges and parries to addons, in any stance.
+- **Overpower:** a quirk carried over from the original game. An Overpower opening is tracked as a hidden combo point on your character, which appears when your target dodges your attack and lasts 5 seconds, whatever stance you're in.
+- **Both:** the ability turning usable in its own stance is used as a backup signal.
+
+It picks up whichever rank you've learned.
 
 ## Credits
 

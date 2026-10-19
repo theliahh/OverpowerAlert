@@ -284,13 +284,24 @@ local function BuildAbilityPage(content, ability)
         "GameFontDisableSmall")
     moveHint:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", 0, -16)
 
+    ---------------------------------------------------------------------------
+    -- Countdown
+    ---------------------------------------------------------------------------
+    local countdownHeader = Label(content, "Countdown", "GameFontNormalLarge")
+    countdownHeader:SetPoint("TOPLEFT", moveHint, "BOTTOMLEFT", 0, -24)
+
+    local countdown = CreateCheckbox(content,
+        "Show the seconds left in the opening (on the icon, or beside the text if the icon is off)",
+        abilityKey, "showCountdown", countdownHeader, -6)
+    countdown:SetPoint("TOPLEFT", countdownHeader, "BOTTOMLEFT", -4, -6)
+
     local slashHint = Label(content,
         "Slash commands: /opa (options), /opa test [overpower|revenge], /opa toggle [ability],\n" ..
         "/opa unlock [ability], /opa lock [ability]. Without an ability, toggle/unlock/lock\n" ..
         "apply to both and test plays Overpower.",
         "GameFontDisableSmall")
     slashHint:SetJustifyH("LEFT")
-    slashHint:SetPoint("TOPLEFT", moveHint, "BOTTOMLEFT", 0, -20)
+    slashHint:SetPoint("TOPLEFT", countdown, "BOTTOMLEFT", 4, -20)
 
     return function()
         customBox:SetShown(cfg().sound == "CUSTOM")

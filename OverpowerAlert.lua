@@ -56,6 +56,7 @@ local function Defaults(ability)
         iconSize = 64,
         iconGlow = "proc",
         iconPos = nil,
+        showCountdown = false,
     }
 end
 
@@ -522,6 +523,13 @@ end
 function ns.IsActive(abilityKey)
     if InOpening(abilityKey) then return true end
     return abilityKey == "overpower" and comboPoints > 0
+end
+
+-- Seconds left in the current opening, or nil if there isn't one. Drives
+-- the countdown.
+function ns.GetRemaining(abilityKey)
+    if not InOpening(abilityKey) then return nil end
+    return state[abilityKey].activeUntil - GetTime()
 end
 
 local function StartTicker()

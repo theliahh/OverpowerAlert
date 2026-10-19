@@ -47,6 +47,34 @@ local function StartFade(el)
     el.fade:Play()
 end
 
+-- Countdown of the seconds left in the opening, to one decimal place. Shown
+-- on the icon, or beside the text when the icon is turned off.
+local PREVIEW_SECONDS = 5 -- previews (/opa test, Preview) have no real opening
+
+local function CountdownWanted(el)
+    local cfg = ns.Config(el.abilityKey)
+    if not cfg.showCountdown then return false end
+    return el.kind == "icon" or not cfg.showIcon
+end
+
+local function UpdateCountdown(el)
+    local fs = el.countdown
+    if not CountdownWanted(el) then
+        fs:Hide()
+        return
+    end
+    -- Keep the last number while fading out.
+    if el.fading then return end
+    local remaining
+    if el.unlocked then
+        remaining = PREVIEW_SECONDS
+    else
+        remaining = ns.GetRemaining(el.abilityKey) or (el.shownAt + PREVIEW_SECONDS - GetTime())
+    end
+    fs:SetFormattedText("%.1f", math.max(remaining, 0))
+    fs:Show()
+end
+
 local function CreateElement(ability, kind, defaultX, defaultY, holdWhile)
     local frameName = "OverpowerAlert" .. ability.name .. (kind == "text" and "Text" or "Icon") .. "Frame"
     local f = CreateFrame("Frame", frameName, UIParent)
@@ -89,6 +117,7 @@ local function CreateElement(ability, kind, defaultX, defaultY, holdWhile)
 
     -- Hold for at least HOLD seconds, then for as long as holdWhile() says.
     f:SetScript("OnUpdate", function()
+        if el.countdown then UpdateCountdown(el) end
         if el.unlocked or el.fading then return end
         local t = GetTime() - el.shownAt
         if t >= HOLD and not (el.holdWhile and el.holdWhile(t)) then
@@ -131,6 +160,7 @@ function ns.ApplyTextStyle(abilityKey)
     if not el then return end
     local size = ns.Config(abilityKey).textSize or 36
     el.label:SetFont(FONT, size, "THICKOUTLINE")
+    el.countdown:SetFont(FONT, size, "THICKOUTLINE")
     el.frame:SetSize(math.max(el.label:GetStringWidth(), size * 5) + 20, size + 16)
 end
 
@@ -177,6 +207,7 @@ function ns.ApplyIconStyle(abilityKey)
     local cfg = ns.Config(abilityKey)
     local size = cfg.iconSize or 64
     el.frame:SetSize(size, size)
+    el.countdown:SetFont(FONT, math.max(12, math.floor(size * 0.4)), "THICKOUTLINE")
     -- Glows are sized when they start, so restart any that's showing.
     if el.frame:IsShown() then StartGlow(el.frame, cfg.iconGlow) else StopGlow(el.frame) end
 end
@@ -201,6 +232,12 @@ function ns.InitDisplay()
         label:SetFont(FONT, 36, "THICKOUTLINE")
         label:SetText(ability.text)
         textEl.label = label
+        local textCountdown = textEl.frame:CreateFontString(nil, "OVERLAY")
+        textCountdown:SetPoint("LEFT", label, "RIGHT", 10, 0)
+        textCountdown:SetTextColor(1, 1, 1)
+        textCountdown:SetFont(FONT, 36, "THICKOUTLINE")
+        textCountdown:Hide()
+        textEl.countdown = textCountdown
         ApplyPosition(textEl)
         ns.ApplyTextStyle(ability.key)
 
@@ -214,6 +251,16 @@ function ns.InitDisplay()
         texture:SetAllPoints()
         texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         iconEl.texture = texture
+        -- On its own layer above the glow, so the glow never covers the number.
+        local countdownLayer = CreateFrame("Frame", nil, f)
+        countdownLayer:SetAllPoints()
+        countdownLayer:SetFrameLevel(f:GetFrameLevel() + 20)
+        local iconCountdown = countdownLayer:CreateFontString(nil, "OVERLAY")
+        iconCountdown:SetPoint("CENTER")
+        iconCountdown:SetTextColor(1, 1, 1)
+        iconCountdown:SetFont(FONT, 26, "THICKOUTLINE")
+        iconCountdown:Hide()
+        iconEl.countdown = iconCountdown
         iconEl.onShow = function()
             RefreshIconTexture(iconEl, ability)
             StartGlow(f, ns.Config(ability.key).iconGlow)

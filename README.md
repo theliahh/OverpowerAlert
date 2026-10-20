@@ -36,9 +36,14 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 - **Sound channel:** Master, Sound Effects, Dialog, Ambience or Music.
 - **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size.
 - **Spell icon** (off by default): pops up the ability's icon. Set its size and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
+- **Icon on the nameplate** (off by default): attaches the icon to your target's nameplate instead of a fixed spot, so it moves with the target. Choose the side (above, below, left or right; above by default) and the gap.
+  - It follows target changes, and nameplates appearing or disappearing.
+  - Enemy nameplates need to be turned on in the game.
+  - If your target has no nameplate (nameplates off, out of range, off-screen), the icon shows at its normal position instead. Untick that fallback to hide it in that case.
+  - For Revenge it's your *target's* nameplate, which may not be the enemy you blocked; the game doesn't tell addons who attacked you.
 - **Countdown** (off by default): the seconds left in the opening, to one decimal place (5.0 down to 0.0). It's shown on the icon, or beside the text if the icon is off. A new block, dodge or parry that extends Revenge's opening resets it.
 - **How long they stay up:** the text and icon stay up while the ability's opening lasts, in any stance: 5 seconds after your target's dodge for Overpower, or after your last block, dodge or parry for Revenge. They fade as soon as you use the ability.
-- **Moving the text or icon:** click **Unlock Text** or **Unlock Icon**, drag the highlighted box where you want it, then right-click it to lock. **Reset Position** puts it back in the default spot, and **Preview** shows it as it will appear.
+- **Moving the text or icon:** click **Unlock Text** or **Unlock Icon**, drag the highlighted box where you want it, then right-click it to lock. For an icon on the nameplate, this sets its fallback position. **Reset Position** puts it back in the default spot, and **Preview** shows it as it will appear.
 
 ## Slash commands
 

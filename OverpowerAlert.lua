@@ -56,6 +56,10 @@ local function Defaults(ability)
         iconSize = 64,
         iconGlow = "proc",
         iconPos = nil,
+        iconOnNameplate = false,   -- anchor the icon to the target's nameplate
+        nameplateSide = "TOP",     -- TOP, BOTTOM, LEFT or RIGHT of the nameplate
+        nameplateGap = 8,          -- pixels between the nameplate and the icon
+        nameplateFallback = true,  -- no nameplate: show at iconPos instead of hiding
         showCountdown = false,
     }
 end

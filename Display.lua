@@ -117,6 +117,7 @@ local function CreateElement(ability, kind, defaultX, defaultY, holdWhile)
 
     -- Hold for at least HOLD seconds, then for as long as holdWhile() says.
     f:SetScript("OnUpdate", function()
+        if el.onUpdate then el.onUpdate() end
         if el.countdown then UpdateCountdown(el) end
         if el.unlocked or el.fading then return end
         local t = GetTime() - el.shownAt
@@ -201,6 +202,51 @@ local function RefreshIconTexture(el, ability)
     el.texture:SetTexture(tex or ability.icon)
 end
 
+-- Optionally the icon sits on the target's nameplate instead of its fixed
+-- position. With no nameplate to use (nameplates off, target out of range or
+-- off-screen) it falls back to the fixed position, or hides if the fallback is
+-- off. Checked every frame while the icon is up, so it follows target changes
+-- and nameplates coming and going.
+local OPPOSITE = { TOP = "BOTTOM", BOTTOM = "TOP", LEFT = "RIGHT", RIGHT = "LEFT" }
+local GAP_DIRECTION = { TOP = { 0, 1 }, BOTTOM = { 0, -1 }, LEFT = { -1, 0 }, RIGHT = { 1, 0 } }
+
+local function TargetNameplate()
+    if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, "target")
+    if not ok or type(plate) ~= "table" then return nil end
+    -- Some nameplates (friendly ones in instances) can't be touched by addons.
+    if plate.IsForbidden and plate:IsForbidden() then return nil end
+    return plate
+end
+
+local function PlaceIcon(el)
+    local cfg = ns.Config(el.abilityKey)
+    local plate = cfg.iconOnNameplate and not el.unlocked and TargetNameplate() or nil
+    local side = GAP_DIRECTION[cfg.nameplateSide] and cfg.nameplateSide or "TOP"
+    local gap = tonumber(cfg.nameplateGap) or 0
+    local mode
+    if plate then
+        mode = "plate"
+    elseif cfg.iconOnNameplate and not el.unlocked and not cfg.nameplateFallback then
+        mode = "hidden"
+    else
+        mode = "fixed"
+    end
+    -- Only move the frame when something changed.
+    local key = mode .. tostring(plate) .. side .. gap
+    if key == el.placedKey then return end
+    el.placedKey = key
+
+    if mode == "plate" then
+        local dir = GAP_DIRECTION[side]
+        el.frame:ClearAllPoints()
+        el.frame:SetPoint(OPPOSITE[side], plate, side, dir[1] * gap, dir[2] * gap)
+    elseif mode == "fixed" then
+        ApplyPosition(el)
+    end
+    el.body:SetShown(mode ~= "hidden")
+end
+
 function ns.ApplyIconStyle(abilityKey)
     local el = Element(abilityKey, "icon")
     if not el then return end
@@ -209,7 +255,7 @@ function ns.ApplyIconStyle(abilityKey)
     el.frame:SetSize(size, size)
     el.countdown:SetFont(FONT, math.max(12, math.floor(size * 0.4)), "THICKOUTLINE")
     -- Glows are sized when they start, so restart any that's showing.
-    if el.frame:IsShown() then StartGlow(el.frame, cfg.iconGlow) else StopGlow(el.frame) end
+    if el.frame:IsShown() then StartGlow(el.body, cfg.iconGlow) else StopGlow(el.body) end
 end
 
 function ns.ShowIcon(abilityKey)
@@ -243,18 +289,23 @@ function ns.InitDisplay()
 
         local iconEl = CreateElement(ability, "icon", d.iconX, d.iconY, isActive)
         local f = iconEl.frame
-        local border = f:CreateTexture(nil, "BACKGROUND")
+        -- Everything visible goes on `body`, so the icon can be hidden (no
+        -- nameplate, no fallback) while the frame keeps running its timing.
+        local body = CreateFrame("Frame", nil, f)
+        body:SetAllPoints()
+        iconEl.body = body
+        local border = body:CreateTexture(nil, "BACKGROUND")
         border:SetPoint("TOPLEFT", -1, 1)
         border:SetPoint("BOTTOMRIGHT", 1, -1)
         border:SetColorTexture(0, 0, 0, 1)
-        local texture = f:CreateTexture(nil, "ARTWORK")
+        local texture = body:CreateTexture(nil, "ARTWORK")
         texture:SetAllPoints()
         texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         iconEl.texture = texture
         -- On its own layer above the glow, so the glow never covers the number.
-        local countdownLayer = CreateFrame("Frame", nil, f)
+        local countdownLayer = CreateFrame("Frame", nil, body)
         countdownLayer:SetAllPoints()
-        countdownLayer:SetFrameLevel(f:GetFrameLevel() + 20)
+        countdownLayer:SetFrameLevel(body:GetFrameLevel() + 20)
         local iconCountdown = countdownLayer:CreateFontString(nil, "OVERLAY")
         iconCountdown:SetPoint("CENTER")
         iconCountdown:SetTextColor(1, 1, 1)
@@ -263,9 +314,12 @@ function ns.InitDisplay()
         iconEl.countdown = iconCountdown
         iconEl.onShow = function()
             RefreshIconTexture(iconEl, ability)
-            StartGlow(f, ns.Config(ability.key).iconGlow)
+            iconEl.placedKey = nil
+            PlaceIcon(iconEl)
+            StartGlow(body, ns.Config(ability.key).iconGlow)
         end
-        f:HookScript("OnHide", StopGlow)
+        iconEl.onUpdate = function() PlaceIcon(iconEl) end
+        f:HookScript("OnHide", function() StopGlow(body) end)
         ApplyPosition(iconEl)
         ns.ApplyIconStyle(ability.key)
     end
@@ -319,4 +373,5 @@ function ns.ResetPosition(abilityKey, kind)
     if not el then return end
     ns.Config(abilityKey)[kind .. "Pos"] = nil
     ApplyPosition(el)
+    el.placedKey = nil -- the icon may belong on a nameplate instead
 end

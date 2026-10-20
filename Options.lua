@@ -26,6 +26,21 @@ local ICON_SIZES = {
     { value = 100, label = "Massive (100)" },
 }
 
+local NAMEPLATE_SIDES = {
+    { value = "TOP",    label = "Above" },
+    { value = "BOTTOM", label = "Below" },
+    { value = "LEFT",   label = "Left" },
+    { value = "RIGHT",  label = "Right" },
+}
+
+local NAMEPLATE_GAPS = {
+    { value = 0,  label = "None" },
+    { value = 4,  label = "4 px" },
+    { value = 8,  label = "8 px" },
+    { value = 16, label = "16 px" },
+    { value = 24, label = "24 px" },
+}
+
 local MENU_MAX_HEIGHT = 400
 
 local function CreateCheckbox(parent, label, abilityKey, key, anchor, yOff)
@@ -279,10 +294,40 @@ local function BuildAbilityPage(content, ability)
     glowDD:SetPoint("TOPLEFT", glowLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = glowDD
 
+    -- Icon on the target's nameplate
+    local onPlate = CreateCheckbox(content, "Anchor the icon to your target's nameplate",
+        abilityKey, "iconOnNameplate", glowDD, -14)
+    onPlate:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", -4, -14)
+
+    local sideLabel = Label(content, "Side")
+    sideLabel:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -10)
+    local sideDD = CreateRadioDropdown(content, 160,
+        function() return NAMEPLATE_SIDES end,
+        function() return cfg().nameplateSide end,
+        function(value) cfg().nameplateSide = value end)
+    sideDD:SetPoint("TOPLEFT", sideLabel, "BOTTOMLEFT", 0, -6)
+    menus[#menus + 1] = sideDD
+
+    local gapLabel = Label(content, "Gap")
+    gapLabel:SetPoint("LEFT", sideLabel, "LEFT", 180, 0)
+    local gapDD = CreateRadioDropdown(content, 120,
+        function() return NAMEPLATE_GAPS end,
+        function() return cfg().nameplateGap end,
+        function(value) cfg().nameplateGap = value end)
+    gapDD:SetPoint("TOPLEFT", gapLabel, "BOTTOMLEFT", 0, -6)
+    menus[#menus + 1] = gapDD
+
+    local fallback = CreateCheckbox(content,
+        "If your target has no nameplate, show the icon at its normal position instead",
+        abilityKey, "nameplateFallback", sideDD, -10)
+    fallback:SetPoint("TOPLEFT", sideDD, "BOTTOMLEFT", -4, -10)
+
     local moveHint = Label(content,
-        "Unlock, then drag the highlighted box anywhere. Right-click it (or /opa lock) to lock.",
+        "Unlock, then drag the highlighted box anywhere. Right-click it (or /opa lock) to lock.\n" ..
+        "With the icon on the nameplate, this sets its normal position, used as the fallback.",
         "GameFontDisableSmall")
-    moveHint:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", 0, -16)
+    moveHint:SetJustifyH("LEFT")
+    moveHint:SetPoint("TOPLEFT", fallback, "BOTTOMLEFT", 4, -16)
 
     ---------------------------------------------------------------------------
     -- Countdown
@@ -379,7 +424,7 @@ function ns.CreateOptions()
         scroll:SetPoint("LEFT", panel, "LEFT", 0, 0)
         scroll:SetPoint("BOTTOMRIGHT", -28, 4)
         local content = CreateFrame("Frame", nil, scroll)
-        content:SetSize(600, 1000)
+        content:SetSize(600, 1200)
         scroll:SetScrollChild(content)
         scroll:SetScript("OnSizeChanged", function(_, width) content:SetWidth(width) end)
         scroll:Hide()

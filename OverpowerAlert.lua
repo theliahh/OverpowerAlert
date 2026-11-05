@@ -58,9 +58,12 @@ local function Defaults(ability)
         iconPos = nil,
         iconOnNameplate = false,   -- anchor the icon to the target's nameplate
         nameplateSide = "TOP",     -- TOP, BOTTOM, LEFT or RIGHT of the nameplate
-        nameplateGap = 8,          -- pixels between the nameplate and the icon
+        nameplateX = 0,            -- offset from that side of the nameplate, in pixels
+        nameplateY = 8,
         nameplateFallback = true,  -- no nameplate: show at iconPos instead of hiding
         showCountdown = false,
+        barGlow = false,           -- glow the ability's action bar buttons
+        barGlowStyle = "proc",
     }
 end
 
@@ -289,6 +292,14 @@ local function LoadSettings()
             cfg.stances = { battle = true, defensive = true, berserker = true }
         end
         cfg.anyStance = nil
+        -- The nameplate icon used to have a single gap away from its side.
+        if cfg.nameplateGap ~= nil and cfg.nameplateX == nil then
+            local gap = tonumber(cfg.nameplateGap) or 0
+            local side = cfg.nameplateSide
+            cfg.nameplateX = side == "LEFT" and -gap or side == "RIGHT" and gap or 0
+            cfg.nameplateY = side == "BOTTOM" and -gap or (side == "LEFT" or side == "RIGHT") and 0 or gap
+        end
+        cfg.nameplateGap = nil
         local defaults = Defaults(ability)
         for k, v in pairs(defaults) do
             if cfg[k] == nil then cfg[k] = v end
@@ -325,7 +336,7 @@ end
 --------------------------------------------------------------------------------
 
 local OPENING = 5.0   -- how long the ability stays available after a trigger
-local EVENT_LAG = 0.5 -- a "usable" signal this soon after an opening ended belongs to it
+local EVENT_LAG = 0.2 -- a "usable" signal this soon after an opening ended belongs to it
 
 local frame = CreateFrame("Frame")
 -- [abilityKey] = { spellID, wasUsable, activeUntil, alerted, consumedUntil }
@@ -384,6 +395,7 @@ local function OnCooldown(abilityKey)
     local duration = info.duration
     return type(duration) == "number" and Readable(duration) and duration > 1.6
 end
+ns.OnCooldown = OnCooldown
 
 -- The stance the player is in ("battle", "defensive", "berserker"), or nil.
 local STANCE_BY_SPELL = {}
@@ -559,6 +571,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if ... ~= ADDON_NAME then return end
         LoadSettings()
         if ns.InitDisplay then ns.InitDisplay() end
+        if ns.InitActionBars then ns.InitActionBars() end
         if ns.CreateOptions then ns.CreateOptions() end
         self:UnregisterEvent("ADDON_LOADED")
         return
@@ -635,6 +648,9 @@ SlashCmdList.OVERPOWERALERT = function(msg)
 
     if cmd == "test" then
         ns.PreviewAlert(abilityKey or "overpower")
+        if ns.Config(abilityKey or "overpower").barGlow and ns.PreviewBarGlow then
+            ns.PreviewBarGlow(abilityKey or "overpower")
+        end
     elseif cmd == "toggle" then
         local keys = {}
         for _, ability in ipairs(ns.ABILITIES) do

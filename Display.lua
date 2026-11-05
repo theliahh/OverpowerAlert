@@ -207,8 +207,9 @@ end
 -- off-screen) it falls back to the fixed position, or hides if the fallback is
 -- off. Checked every frame while the icon is up, so it follows target changes
 -- and nameplates coming and going.
+-- The icon's facing edge sits on the chosen side of the plate, then moves by
+-- the X/Y offset (so two abilities on the same side can sit apart).
 local OPPOSITE = { TOP = "BOTTOM", BOTTOM = "TOP", LEFT = "RIGHT", RIGHT = "LEFT" }
-local GAP_DIRECTION = { TOP = { 0, 1 }, BOTTOM = { 0, -1 }, LEFT = { -1, 0 }, RIGHT = { 1, 0 } }
 
 local function TargetNameplate()
     if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
@@ -222,8 +223,8 @@ end
 local function PlaceIcon(el)
     local cfg = ns.Config(el.abilityKey)
     local plate = cfg.iconOnNameplate and not el.unlocked and TargetNameplate() or nil
-    local side = GAP_DIRECTION[cfg.nameplateSide] and cfg.nameplateSide or "TOP"
-    local gap = tonumber(cfg.nameplateGap) or 0
+    local side = OPPOSITE[cfg.nameplateSide] and cfg.nameplateSide or "TOP"
+    local x, y = tonumber(cfg.nameplateX) or 0, tonumber(cfg.nameplateY) or 0
     local mode
     if plate then
         mode = "plate"
@@ -233,14 +234,13 @@ local function PlaceIcon(el)
         mode = "fixed"
     end
     -- Only move the frame when something changed.
-    local key = mode .. tostring(plate) .. side .. gap
+    local key = mode .. tostring(plate) .. side .. x .. "," .. y
     if key == el.placedKey then return end
     el.placedKey = key
 
     if mode == "plate" then
-        local dir = GAP_DIRECTION[side]
         el.frame:ClearAllPoints()
-        el.frame:SetPoint(OPPOSITE[side], plate, side, dir[1] * gap, dir[2] * gap)
+        el.frame:SetPoint(OPPOSITE[side], plate, side, x, y)
     elseif mode == "fixed" then
         ApplyPosition(el)
     end

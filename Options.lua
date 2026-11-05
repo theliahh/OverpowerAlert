@@ -33,13 +33,7 @@ local NAMEPLATE_SIDES = {
     { value = "RIGHT",  label = "Right" },
 }
 
-local NAMEPLATE_GAPS = {
-    { value = 0,  label = "None" },
-    { value = 4,  label = "4 px" },
-    { value = 8,  label = "8 px" },
-    { value = 16, label = "16 px" },
-    { value = 24, label = "24 px" },
-}
+local MAX_OFFSET = 500
 
 local MENU_MAX_HEIGHT = 400
 
@@ -65,6 +59,26 @@ local function CreateRadioDropdown(parent, width, options, getValue, setValue)
         end
     end)
     return dd
+end
+
+-- A box for a whole number of pixels (negative allowed), saved on Enter or
+-- when it loses focus. Anything that isn't a number puts the saved value back.
+local function CreateNumberBox(parent, abilityKey, key)
+    local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    box:SetSize(60, 22)
+    box:SetAutoFocus(false)
+    local function Load(self) self:SetText(tostring(ns.Config(abilityKey)[key] or 0)) end
+    box:SetScript("OnShow", Load)
+    box:SetScript("OnEditFocusLost", function(self)
+        local v = tonumber(self:GetText())
+        if v then
+            ns.Config(abilityKey)[key] = math.max(-MAX_OFFSET, math.min(MAX_OFFSET, math.floor(v + 0.5)))
+        end
+        Load(self)
+    end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEscapePressed", function(self) Load(self); self:ClearFocus() end)
+    return box
 end
 
 local function CreateButton(parent, text, width)
@@ -320,25 +334,64 @@ local function BuildAbilityPage(content, ability)
     sideDD:SetPoint("TOPLEFT", sideLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = sideDD
 
-    local gapLabel = Label(content, "Gap")
-    gapLabel:SetPoint("LEFT", sideLabel, "LEFT", 180, 0)
-    local gapDD = CreateRadioDropdown(content, 120,
-        function() return NAMEPLATE_GAPS end,
-        function() return cfg().nameplateGap end,
-        function(value) cfg().nameplateGap = value end)
-    gapDD:SetPoint("TOPLEFT", gapLabel, "BOTTOMLEFT", 0, -6)
-    menus[#menus + 1] = gapDD
+    local xLabel = Label(content, "X offset")
+    xLabel:SetPoint("LEFT", sideLabel, "LEFT", 180, 0)
+    local xBox = CreateNumberBox(content, abilityKey, "nameplateX")
+    xBox:SetPoint("TOPLEFT", xLabel, "BOTTOMLEFT", 6, -8)
+
+    local yLabel = Label(content, "Y offset")
+    yLabel:SetPoint("LEFT", xLabel, "LEFT", 90, 0)
+    local yBox = CreateNumberBox(content, abilityKey, "nameplateY")
+    yBox:SetPoint("TOPLEFT", yLabel, "BOTTOMLEFT", 6, -8)
+
+    local plateHint = Label(content,
+        "Pixels from the chosen side: X moves right (negative: left), Y moves up (negative: down).\n" ..
+        "Give Overpower and Revenge different offsets so they don't overlap when both are up.",
+        "GameFontDisableSmall")
+    plateHint:SetJustifyH("LEFT")
+    plateHint:SetPoint("TOPLEFT", sideDD, "BOTTOMLEFT", 0, -10)
 
     local fallback = CreateCheckbox(content,
         "If your target has no nameplate, show the icon at its normal position instead",
-        abilityKey, "nameplateFallback", sideDD, -10)
-    fallback:SetPoint("TOPLEFT", sideDD, "BOTTOMLEFT", -4, -10)
+        abilityKey, "nameplateFallback", plateHint, -8)
+    fallback:SetPoint("TOPLEFT", plateHint, "BOTTOMLEFT", -4, -8)
+
+    ---------------------------------------------------------------------------
+    -- Action bar glow
+    ---------------------------------------------------------------------------
+    local barHeader = Label(content, "Action bars", "GameFontNormalLarge")
+    barHeader:SetPoint("TOPLEFT", fallback, "BOTTOMLEFT", 4, -24)
+
+    local barGlow = CreateCheckbox(content,
+        "Glow " .. ability.name .. " on your action bars while it's up (any stance)",
+        abilityKey, "barGlow", barHeader, -6)
+    barGlow:SetPoint("TOPLEFT", barHeader, "BOTTOMLEFT", -4, -6)
+
+    local barStyleLabel = Label(content, "Button glow")
+    barStyleLabel:SetPoint("TOPLEFT", barGlow, "BOTTOMLEFT", 4, -12)
+    local barStyleDD = CreateRadioDropdown(content, 160,
+        function() return ns.GLOW_STYLES end,
+        function() return cfg().barGlowStyle end,
+        function(value) cfg().barGlowStyle = value end)
+    barStyleDD:SetPoint("TOPLEFT", barStyleLabel, "BOTTOMLEFT", 0, -6)
+    menus[#menus + 1] = barStyleDD
+
+    local barPreview = CreateButton(content, "Preview", 80)
+    barPreview:SetPoint("LEFT", barStyleDD, "RIGHT", 10, 0)
+    barPreview:SetScript("OnClick", function() ns.PreviewBarGlow(abilityKey) end)
+
+    local barHint = Label(content,
+        "Works with Blizzard's bars, EllesmereUI, and LibActionButton bars (Bartender4, ElvUI).\n" ..
+        "Only buttons on bars you can see glow, so put it on a bar that shows in every stance.",
+        "GameFontDisableSmall")
+    barHint:SetJustifyH("LEFT")
+    barHint:SetPoint("TOPLEFT", barStyleDD, "BOTTOMLEFT", 0, -10)
 
     ---------------------------------------------------------------------------
     -- Countdown
     ---------------------------------------------------------------------------
     local countdownHeader = Label(content, "Countdown", "GameFontNormalLarge")
-    countdownHeader:SetPoint("TOPLEFT", fallback, "BOTTOMLEFT", 4, -24)
+    countdownHeader:SetPoint("TOPLEFT", barHint, "BOTTOMLEFT", 0, -24)
 
     local countdown = CreateCheckbox(content,
         "Show the seconds left in the opening (on the icon, or beside the text if the icon is off)",
@@ -429,7 +482,7 @@ function ns.CreateOptions()
         scroll:SetPoint("LEFT", panel, "LEFT", 0, 0)
         scroll:SetPoint("BOTTOMRIGHT", -28, 4)
         local content = CreateFrame("Frame", nil, scroll)
-        content:SetSize(600, 1200)
+        content:SetSize(600, 1450)
         scroll:SetScrollChild(content)
         scroll:SetScript("OnSizeChanged", function(_, width) content:SetWidth(width) end)
         scroll:Hide()

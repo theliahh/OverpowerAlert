@@ -38,11 +38,15 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 - **Sound channel:** Master, Sound Effects, Dialog, Ambience or Music.
 - **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size.
 - **Spell icon** (on by default): pops up the ability's icon. Set its size and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
-- **Icon on the nameplate** (off by default): attaches the icon to your target's nameplate instead of a fixed spot, so it moves with the target. Choose the side (above, below, left or right; above by default) and the gap.
+- **Icon on the nameplate** (off by default): attaches the icon to your target's nameplate instead of a fixed spot, so it moves with the target. Choose the side (above, below, left or right; above by default) and an X/Y offset in pixels from that side.
+  - If both icons are on the nameplate, give Overpower and Revenge different offsets (for example X -36 and X 36) so they don't overlap when both are up.
   - It follows target changes, and nameplates appearing or disappearing.
   - Enemy nameplates need to be turned on in the game.
   - If your target has no nameplate (nameplates off, out of range, off-screen), the icon shows at its normal position instead. Untick that fallback to hide it in that case.
   - For Revenge it's your *target's* nameplate, which may not be the enemy you blocked; the game doesn't tell addons who attacked you.
+- **Action bars** (off by default): glows the ability's buttons on your action bars while its opening is up, in any stance, with a glow style of your choice. It stops when you use the ability, or while it's on cooldown.
+  - Works with Blizzard's bars, EllesmereUI Action Bars, and bar addons built on LibActionButton, such as Bartender4 and ElvUI. Buttons that cast the spell through a macro glow too.
+  - Only buttons on bars you can see glow. Your main bar changes with your stance, so put the ability on a bar that shows in every stance to see it everywhere.
 - **Countdown** (off by default): the seconds left in the opening, to one decimal place (5.0 down to 0.0). It's shown on the icon, or beside the text if the icon is off. A new block, dodge or parry that extends Revenge's opening resets it.
 - **How long they stay up:** the text and icon stay up while the ability's opening lasts, in any stance: 5 seconds after your target's dodge for Overpower, or after your last block, dodge or parry for Revenge. They fade as soon as you use the ability.
 - **Moving the text or icon:** click **Unlock Text** or **Unlock Icon**, drag the highlighted box where you want it, then right-click it to lock. For an icon on the nameplate, this sets its fallback position. **Reset Position** puts it back in the default spot, and **Preview** shows it as it will appear.
@@ -54,7 +58,7 @@ Commands that take an ability accept `overpower` (or `op`) or `revenge` (or `rev
 | Command | What it does |
 | --- | --- |
 | `/opa` | Open the options |
-| `/opa test [ability]` | Preview the full alert: plays the sound, and shows the text and icon if they're turned on. Without an ability, previews Overpower. |
+| `/opa test [ability]` | Preview the full alert: plays the sound, and shows the text, icon and action bar glow if they're turned on. Without an ability, previews Overpower. |
 | `/opa toggle [ability]` | Turn an alert on or off. Without an ability, turns both off if either is on, otherwise turns both on. |
 | `/opa unlock [ability]` / `/opa lock [ability]` | Unlock the text and icon to move them, or lock them again. Without an ability, applies to both. |
 

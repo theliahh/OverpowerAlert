@@ -16,4 +16,5 @@ Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.lua
 
 OverpowerAlert.lua
 Display.lua
+ActionBars.lua
 Options.lua

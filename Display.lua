@@ -360,6 +360,9 @@ function ns.SetUnlocked(abilityKey, kind, value)
     el.fade:Stop()
     el.fading = false
     el.frame:EnableMouse(el.unlocked)
+    -- The options window shares the HIGH strata and rises above us when
+    -- clicked, which would catch the drag. Sit above it while unlocked.
+    el.frame:SetFrameStrata(el.unlocked and "FULLSCREEN_DIALOG" or "HIGH")
     el.bg:SetShown(el.unlocked)
     el.hint:SetShown(el.unlocked)
     el.frame:SetAlpha(1)

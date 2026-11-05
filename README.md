@@ -1,5 +1,7 @@
 # Overpower Alert
 
+Updated for Forever launch! Happy playing!
+
 A World of Warcraft Forever addon for Warriors that alerts you the moment **Overpower** or **Revenge** becomes usable. Each alert can play a sound, show text on screen and pop up the spell icon.
 
 ## Install

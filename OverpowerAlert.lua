@@ -52,7 +52,7 @@ local function Defaults(ability)
         showText = true,
         textSize = 36,
         textPos = nil, -- { point, relPoint, x, y }; nil = default spot
-        showIcon = false,
+        showIcon = true,
         iconSize = 64,
         iconGlow = "proc",
         iconPos = nil,

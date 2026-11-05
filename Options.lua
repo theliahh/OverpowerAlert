@@ -294,10 +294,22 @@ local function BuildAbilityPage(content, ability)
     glowDD:SetPoint("TOPLEFT", glowLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = glowDD
 
+    local moveHint = Label(content,
+        "Unlock, then drag the highlighted box anywhere. Right-click it (or /opa lock) to lock.\n" ..
+        "With the icon on the nameplate, this sets its normal position, used as the fallback.",
+        "GameFontDisableSmall")
+    moveHint:SetJustifyH("LEFT")
+    moveHint:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", 0, -16)
+
+    ---------------------------------------------------------------------------
     -- Icon on the target's nameplate
+    ---------------------------------------------------------------------------
+    local plateHeader = Label(content, "Nameplate", "GameFontNormalLarge")
+    plateHeader:SetPoint("TOPLEFT", moveHint, "BOTTOMLEFT", 0, -24)
+
     local onPlate = CreateCheckbox(content, "Anchor the icon to your target's nameplate",
-        abilityKey, "iconOnNameplate", glowDD, -14)
-    onPlate:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", -4, -14)
+        abilityKey, "iconOnNameplate", plateHeader, -6)
+    onPlate:SetPoint("TOPLEFT", plateHeader, "BOTTOMLEFT", -4, -6)
 
     local sideLabel = Label(content, "Side")
     sideLabel:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -10)
@@ -322,18 +334,11 @@ local function BuildAbilityPage(content, ability)
         abilityKey, "nameplateFallback", sideDD, -10)
     fallback:SetPoint("TOPLEFT", sideDD, "BOTTOMLEFT", -4, -10)
 
-    local moveHint = Label(content,
-        "Unlock, then drag the highlighted box anywhere. Right-click it (or /opa lock) to lock.\n" ..
-        "With the icon on the nameplate, this sets its normal position, used as the fallback.",
-        "GameFontDisableSmall")
-    moveHint:SetJustifyH("LEFT")
-    moveHint:SetPoint("TOPLEFT", fallback, "BOTTOMLEFT", 4, -16)
-
     ---------------------------------------------------------------------------
     -- Countdown
     ---------------------------------------------------------------------------
     local countdownHeader = Label(content, "Countdown", "GameFontNormalLarge")
-    countdownHeader:SetPoint("TOPLEFT", moveHint, "BOTTOMLEFT", 0, -24)
+    countdownHeader:SetPoint("TOPLEFT", fallback, "BOTTOMLEFT", 4, -24)
 
     local countdown = CreateCheckbox(content,
         "Show the seconds left in the opening (on the icon, or beside the text if the icon is off)",

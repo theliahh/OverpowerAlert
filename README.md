@@ -37,7 +37,7 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
   Choosing a sound plays it, so you can try several in a row.
 - **Sound channel:** Master, Sound Effects, Dialog, Ambience or Music.
 - **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size.
-- **Spell icon** (off by default): pops up the ability's icon. Set its size and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
+- **Spell icon** (on by default): pops up the ability's icon. Set its size and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
 - **Icon on the nameplate** (off by default): attaches the icon to your target's nameplate instead of a fixed spot, so it moves with the target. Choose the side (above, below, left or right; above by default) and the gap.
   - It follows target changes, and nameplates appearing or disappearing.
   - Enemy nameplates need to be turned on in the game.

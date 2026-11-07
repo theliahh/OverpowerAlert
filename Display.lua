@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L -- all text lives in Strings.lua
 
 -- On-screen alerts: a text and a spell icon for each ability. Each can be
 -- unlocked and dragged anywhere; positions are saved in the ability's
@@ -14,11 +15,11 @@ local FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 local KINDS = { "text", "icon" }
 
 ns.GLOW_STYLES = {
-    { value = "none",     label = "None" },
-    { value = "proc",     label = "Proc Glow" },
-    { value = "button",   label = "Action Button Glow" },
-    { value = "pixel",    label = "Pixel Glow" },
-    { value = "autocast", label = "Autocast Shine" },
+    { value = "none",     label = L.GLOW_NONE },
+    { value = "proc",     label = L.GLOW_PROC },
+    { value = "button",   label = L.GLOW_BUTTON },
+    { value = "pixel",    label = L.GLOW_PIXEL },
+    { value = "autocast", label = L.GLOW_AUTOCAST },
 }
 
 local elements = {} -- [abilityKey][kind] = element
@@ -101,7 +102,7 @@ local function CreateElement(ability, kind, defaultX, defaultY, holdWhile)
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("TOP", f, "BOTTOM", 0, -8)
-    hint:SetText(ability.name .. " " .. kind .. ": drag to move, right-click to lock")
+    hint:SetText((kind == "text" and L.MOVE_TEXT_HINT or L.MOVE_ICON_HINT):format(ability.name))
     hint:Hide()
     el.hint = hint
 
@@ -136,6 +137,9 @@ local function CreateElement(ability, kind, defaultX, defaultY, holdWhile)
         ns.Config(ability.key)[kind .. "Pos"] =
             { point, relPoint, math.floor(x + 0.5), math.floor(y + 0.5) }
     end)
+    -- Setting mouse scripts turns the mouse on; keep alerts click-through
+    -- (camera turning, clicking the world) until unlocked to move.
+    f:EnableMouse(false)
 
     elements[ability.key] = elements[ability.key] or {}
     elements[ability.key][kind] = el

@@ -1,15 +1,16 @@
 local ADDON_NAME, ns = ...
+local L = ns.L -- all text lives in Strings.lua
 
 -- Reactive abilities we alert on. Each has its own settings table in
 -- OverpowerAlertDB[key]. Spell IDs are listed highest rank first; the highest
 -- known rank is watched.
 ns.ABILITIES = {
     {
-        key = "overpower", name = "Overpower",
+        key = "overpower", name = L.OVERPOWER,
         ids = { 11585, 11584, 7887, 7384 },
-        text = "OVERPOWER!", color = { 1, 0.4, 0.1 },
+        text = L.OVERPOWER_ALERT_TEXT, color = { 1, 0.4, 0.1 },
         icon = "Interface\\Icons\\Ability_MeleeDamage",
-        description = "Available for 5 seconds after your target dodges your attack. Can only be cast in Battle Stance.",
+        description = L.OVERPOWER_DESCRIPTION,
         defaults = {
             sound = "cdm:316723", -- Warhorn
             stances = { battle = true, defensive = false, berserker = false },
@@ -17,11 +18,11 @@ ns.ABILITIES = {
         },
     },
     {
-        key = "revenge", name = "Revenge",
+        key = "revenge", name = L.REVENGE,
         ids = { 25288, 11601, 11600, 7379, 6574, 6572 },
-        text = "REVENGE!", color = { 1, 0.82, 0 },
+        text = L.REVENGE_ALERT_TEXT, color = { 1, 0.82, 0 },
         icon = "Interface\\Icons\\Ability_Warrior_Revenge",
-        description = "Available for 5 seconds after you block, dodge or parry. Can only be cast in Defensive Stance.",
+        description = L.REVENGE_DESCRIPTION,
         defaults = {
             sound = "cdm:353421", -- Sword Shing
             stances = { battle = false, defensive = true, berserker = false },
@@ -35,9 +36,9 @@ for _, ability in ipairs(ns.ABILITIES) do ns.ABILITY_BY_KEY[ability.key] = abili
 -- Warrior stances, in stance bar order. Each ability alerts only in the
 -- stances ticked in its settings (cfg.stances[key]).
 ns.STANCES = {
-    { key = "battle",    name = "Battle Stance",    spellID = 2457 },
-    { key = "defensive", name = "Defensive Stance", spellID = 71 },
-    { key = "berserker", name = "Berserker Stance", spellID = 2458 },
+    { key = "battle",    name = L.BATTLE_STANCE,    spellID = 2457 },
+    { key = "defensive", name = L.DEFENSIVE_STANCE, spellID = 71 },
+    { key = "berserker", name = L.BERSERKER_STANCE, spellID = 2458 },
 }
 
 local function Defaults(ability)
@@ -218,7 +219,7 @@ function ns.GetSharedMediaSounds()
 end
 
 function ns.GetSoundLabel(key)
-    if key == "CUSTOM" then return "Custom" end
+    if key == "CUSTOM" then return L.SOUND_CUSTOM end
     local smName = key and key:match("^sm:(.+)")
     if smName then return smName end
     return cdmLabels[key] or key or "?"
@@ -633,7 +634,7 @@ frame:RegisterEvent("PLAYER_LOGIN")
 local ABILITY_ALIASES = { op = "overpower", overpower = "overpower", rev = "revenge", revenge = "revenge" }
 
 local function Print(text)
-    print("|cffff6619Overpower Alert|r " .. text)
+    print("|cffff6619" .. L.ADDON_TITLE .. "|r " .. text)
 end
 
 SLASH_OVERPOWERALERT1 = "/opa"
@@ -642,7 +643,7 @@ SlashCmdList.OVERPOWERALERT = function(msg)
     local cmd, arg = strlower(strtrim(msg or "")):match("^(%S*)%s*(.-)$")
     local abilityKey = ABILITY_ALIASES[arg]
     if arg ~= "" and not abilityKey then
-        Print("unknown ability \"" .. arg .. "\" (use overpower or revenge)")
+        Print(L.UNKNOWN_ABILITY:format(arg))
         return
     end
 
@@ -661,7 +662,7 @@ SlashCmdList.OVERPOWERALERT = function(msg)
         for _, k in ipairs(keys) do anyOn = anyOn or ns.Config(k).enabled end
         for _, k in ipairs(keys) do
             ns.Config(k).enabled = not anyOn
-            Print(ns.ABILITY_BY_KEY[k].name .. " alert " .. (anyOn and "disabled" or "enabled"))
+            Print((anyOn and L.ALERT_DISABLED or L.ALERT_ENABLED):format(ns.ABILITY_BY_KEY[k].name))
         end
     elseif cmd == "unlock" or cmd == "move" then
         ns.SetUnlocked(abilityKey, nil, true)

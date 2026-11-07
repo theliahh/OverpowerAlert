@@ -1,36 +1,34 @@
 local ADDON_NAME, ns = ...
+local L = ns.L -- all text lives in Strings.lua
 
 local category
 
 local CHANNELS = {
-    { value = "Master",   label = "Master" },
-    { value = "SFX",      label = "Sound Effects" },
-    { value = "Dialog",   label = "Dialog" },
-    { value = "Ambience", label = "Ambience" },
-    { value = "Music",    label = "Music" },
+    { value = "Master",   label = L.CHANNEL_MASTER },
+    { value = "SFX",      label = L.CHANNEL_SFX },
+    { value = "Dialog",   label = L.CHANNEL_DIALOG },
+    { value = "Ambience", label = L.CHANNEL_AMBIENCE },
+    { value = "Music",    label = L.CHANNEL_MUSIC },
 }
 
-local TEXT_SIZES = {
-    { value = 24, label = "Small (24)" },
-    { value = 30, label = "Medium (30)" },
-    { value = 36, label = "Large (36)" },
-    { value = 48, label = "Huge (48)" },
-    { value = 64, label = "Massive (64)" },
-}
+local SIZE_NAMES = { L.SIZE_SMALL, L.SIZE_MEDIUM, L.SIZE_LARGE, L.SIZE_HUGE, L.SIZE_MASSIVE }
 
-local ICON_SIZES = {
-    { value = 40,  label = "Small (40)" },
-    { value = 52,  label = "Medium (52)" },
-    { value = 64,  label = "Large (64)" },
-    { value = 80,  label = "Huge (80)" },
-    { value = 100, label = "Massive (100)" },
-}
+local function Sizes(values)
+    local list = {}
+    for i, v in ipairs(values) do
+        list[i] = { value = v, label = L.SIZE_LABEL:format(SIZE_NAMES[i], v) }
+    end
+    return list
+end
+
+local TEXT_SIZES = Sizes({ 24, 30, 36, 48, 64 })
+local ICON_SIZES = Sizes({ 40, 52, 64, 80, 100 })
 
 local NAMEPLATE_SIDES = {
-    { value = "TOP",    label = "Above" },
-    { value = "BOTTOM", label = "Below" },
-    { value = "LEFT",   label = "Left" },
-    { value = "RIGHT",  label = "Right" },
+    { value = "TOP",    label = L.SIDE_TOP },
+    { value = "BOTTOM", label = L.SIDE_BOTTOM },
+    { value = "LEFT",   label = L.SIDE_LEFT },
+    { value = "RIGHT",  label = L.SIDE_RIGHT },
 }
 
 local MAX_OFFSET = 500
@@ -94,11 +92,11 @@ local function Label(parent, text, template)
     return fs
 end
 
-local unlockButtons = {} -- ["<abilityKey>/<kind>"] = { button, noun }
+local unlockButtons = {} -- ["<abilityKey>/<kind>"] = { button, unlockText, lockText }
 
 function ns.OnUnlockChanged(abilityKey, kind, isUnlocked)
     local b = unlockButtons[abilityKey .. "/" .. kind]
-    if b then b.button:SetText((isUnlocked and "Lock " or "Unlock ") .. b.noun) end
+    if b then b.button:SetText(isUnlocked and b.lockText or b.unlockText) end
 end
 
 --------------------------------------------------------------------------------
@@ -114,10 +112,10 @@ local function BuildAbilityPage(content, ability)
     local desc = Label(content, ability.description, "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", 16, -8)
 
-    local enabled = CreateCheckbox(content, "Enable " .. ability.name .. " alert", abilityKey, "enabled", desc, -10)
+    local enabled = CreateCheckbox(content, L.ENABLE_ALERT:format(ability.name), abilityKey, "enabled", desc, -10)
     enabled:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", -4, -10)
     -- Which stances to alert in: one checkbox per stance, in a row.
-    local stanceLabel = Label(content, "Alert in:", "GameFontHighlight")
+    local stanceLabel = Label(content, L.ALERT_IN, "GameFontHighlight")
     stanceLabel:SetPoint("TOPLEFT", enabled, "BOTTOMLEFT", 4, -10)
     local prevText
     for _, stance in ipairs(ns.STANCES) do
@@ -135,15 +133,13 @@ local function BuildAbilityPage(content, ability)
         prevText = text
     end
 
-    local stanceHint = Label(content,
-        "Alerts once per opening, the first moment you're in a ticked stance while it's up.",
-        "GameFontDisableSmall")
+    local stanceHint = Label(content, L.STANCE_HINT, "GameFontDisableSmall")
     stanceHint:SetPoint("TOPLEFT", stanceLabel, "BOTTOMLEFT", 0, -12)
 
     ---------------------------------------------------------------------------
     -- Sound
     ---------------------------------------------------------------------------
-    local soundLabel = Label(content, "Alert sound")
+    local soundLabel = Label(content, L.ALERT_SOUND)
     soundLabel:SetPoint("TOPLEFT", stanceHint, "BOTTOMLEFT", 0, -20)
 
     local customBox
@@ -166,7 +162,7 @@ local function BuildAbilityPage(content, ability)
     end
 
     local function AddGroup(root, groupName, list)
-        local group = root:CreateButton(string.format("%s (%d)", groupName, #list))
+        local group = root:CreateButton(L.SOUND_GROUP:format(groupName, #list))
         if group.SetScrollMode then group:SetScrollMode(MENU_MAX_HEIGHT) end
         for _, s in ipairs(list) do
             group:CreateRadio(s.label, IsSound, SetSound, s.key)
@@ -185,24 +181,21 @@ local function BuildAbilityPage(content, ability)
         root:CreateDivider()
         local shared = ns.GetSharedMediaSounds()
         if #shared > 0 then
-            AddGroup(root, "Shared Media", shared)
+            AddGroup(root, L.SHARED_MEDIA, shared)
         else
-            local none = root:CreateButton("Shared Media (none installed)")
+            local none = root:CreateButton(L.SHARED_MEDIA_NONE)
             none:SetEnabled(false)
         end
         root:CreateDivider()
-        root:CreateRadio("Custom (path or file ID)", IsSound, SetSound, "CUSTOM")
+        root:CreateRadio(L.SOUND_CUSTOM_MENU, IsSound, SetSound, "CUSTOM")
     end)
     menus[#menus + 1] = soundDD
 
-    local test = CreateButton(content, "Test", 80)
+    local test = CreateButton(content, L.TEST, 80)
     test:SetPoint("LEFT", soundDD, "RIGHT", 10, 0)
     test:SetScript("OnClick", function() ns.PlayAlertSound(abilityKey) end)
 
-    local smHint = Label(content,
-        "Shared Media lists every sound registered through LibSharedMedia by other addons\n" ..
-        "(BigWigs, SharedMedia packs, WeakAuras, etc.). Install those to get more sounds.",
-        "GameFontDisableSmall")
+    local smHint = Label(content, L.SHARED_MEDIA_HINT, "GameFontDisableSmall")
     smHint:SetJustifyH("LEFT")
     smHint:SetPoint("TOPLEFT", soundDD, "BOTTOMLEFT", 0, -6)
 
@@ -211,9 +204,7 @@ local function BuildAbilityPage(content, ability)
     customBox:SetPoint("TOPLEFT", smHint, "BOTTOMLEFT", 0, -10)
     customBox:SetSize(420, 44)
 
-    local customLabel = Label(customBox,
-        "Sound file path or FileDataID (e.g. Interface\\AddOns\\OverpowerAlert\\Sounds\\alert.ogg)",
-        "GameFontHighlightSmall")
+    local customLabel = Label(customBox, L.CUSTOM_SOUND_LABEL, "GameFontHighlightSmall")
     customLabel:SetPoint("TOPLEFT")
 
     local edit = CreateFrame("EditBox", nil, customBox, "InputBoxTemplate")
@@ -228,7 +219,7 @@ local function BuildAbilityPage(content, ability)
     edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
     -- Channel
-    local channelLabel = Label(content, "Sound channel")
+    local channelLabel = Label(content, L.SOUND_CHANNEL)
     channelLabel:SetPoint("TOPLEFT", customBox, "BOTTOMLEFT", 0, -8)
 
     local channelDD = CreateRadioDropdown(content, 240,
@@ -259,18 +250,18 @@ local function BuildAbilityPage(content, ability)
         sizeDD:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -6)
         menus[#menus + 1] = sizeDD
 
-        local unlock = CreateButton(content, "Unlock " .. s.noun, 120)
+        local unlock = CreateButton(content, s.unlockText, 120)
         unlock:SetPoint("LEFT", sizeDD, "RIGHT", 10, 0)
         unlock:SetScript("OnClick", function()
             ns.SetUnlocked(abilityKey, s.kind, not ns.IsUnlocked(abilityKey, s.kind))
         end)
-        unlockButtons[abilityKey .. "/" .. s.kind] = { button = unlock, noun = s.noun }
+        unlockButtons[abilityKey .. "/" .. s.kind] = { button = unlock, unlockText = s.unlockText, lockText = s.lockText }
 
-        local reset = CreateButton(content, "Reset Position", 120)
+        local reset = CreateButton(content, L.RESET_POSITION, 120)
         reset:SetPoint("LEFT", unlock, "RIGHT", 6, 0)
         reset:SetScript("OnClick", function() ns.ResetPosition(abilityKey, s.kind) end)
 
-        local preview = CreateButton(content, "Preview", 80)
+        local preview = CreateButton(content, L.PREVIEW, 80)
         preview:SetPoint("LEFT", reset, "RIGHT", 6, 0)
         preview:SetScript("OnClick", s.preview)
 
@@ -278,23 +269,23 @@ local function BuildAbilityPage(content, ability)
     end
 
     local textSizeDD = BuildDisplaySection(channelDD, {
-        kind = "text", noun = "Text", title = "On-screen text",
-        showLabel = "Show \"" .. ability.text .. "\" on screen", showKey = "showText",
-        sizeLabel = "Text size", sizeKey = "textSize", sizes = TEXT_SIZES,
+        kind = "text", unlockText = L.UNLOCK_TEXT, lockText = L.LOCK_TEXT, title = L.ONSCREEN_TEXT,
+        showLabel = L.SHOW_TEXT:format(ability.text), showKey = "showText",
+        sizeLabel = L.TEXT_SIZE, sizeKey = "textSize", sizes = TEXT_SIZES,
         applyStyle = function() ns.ApplyTextStyle(abilityKey) end,
         preview = function() ns.ShowText(abilityKey) end,
     })
 
     local iconSizeDD = BuildDisplaySection(textSizeDD, {
-        kind = "icon", noun = "Icon", title = "Spell icon",
-        showLabel = "Show the " .. ability.name .. " icon (stays up while " .. ability.name .. " is usable)",
+        kind = "icon", unlockText = L.UNLOCK_ICON, lockText = L.LOCK_ICON, title = L.SPELL_ICON,
+        showLabel = L.SHOW_ICON:format(ability.name, ability.name),
         showKey = "showIcon",
-        sizeLabel = "Icon size", sizeKey = "iconSize", sizes = ICON_SIZES,
+        sizeLabel = L.ICON_SIZE, sizeKey = "iconSize", sizes = ICON_SIZES,
         applyStyle = function() ns.ApplyIconStyle(abilityKey) end,
         preview = function() ns.ShowIcon(abilityKey) end,
     })
 
-    local glowLabel = Label(content, "Icon glow")
+    local glowLabel = Label(content, L.ICON_GLOW)
     glowLabel:SetPoint("TOPLEFT", iconSizeDD, "BOTTOMLEFT", 0, -12)
 
     local glowDD = CreateRadioDropdown(content, 160,
@@ -308,24 +299,21 @@ local function BuildAbilityPage(content, ability)
     glowDD:SetPoint("TOPLEFT", glowLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = glowDD
 
-    local moveHint = Label(content,
-        "Unlock, then drag the highlighted box anywhere. Right-click it (or /opa lock) to lock.\n" ..
-        "With the icon on the nameplate, this sets its normal position, used as the fallback.",
-        "GameFontDisableSmall")
+    local moveHint = Label(content, L.MOVE_HINT, "GameFontDisableSmall")
     moveHint:SetJustifyH("LEFT")
     moveHint:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", 0, -16)
 
     ---------------------------------------------------------------------------
     -- Icon on the target's nameplate
     ---------------------------------------------------------------------------
-    local plateHeader = Label(content, "Nameplate", "GameFontNormalLarge")
+    local plateHeader = Label(content, L.NAMEPLATE, "GameFontNormalLarge")
     plateHeader:SetPoint("TOPLEFT", moveHint, "BOTTOMLEFT", 0, -24)
 
-    local onPlate = CreateCheckbox(content, "Anchor the icon to your target's nameplate",
+    local onPlate = CreateCheckbox(content, L.ICON_ON_NAMEPLATE,
         abilityKey, "iconOnNameplate", plateHeader, -6)
     onPlate:SetPoint("TOPLEFT", plateHeader, "BOTTOMLEFT", -4, -6)
 
-    local sideLabel = Label(content, "Side")
+    local sideLabel = Label(content, L.SIDE)
     sideLabel:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -10)
     local sideDD = CreateRadioDropdown(content, 160,
         function() return NAMEPLATE_SIDES end,
@@ -334,40 +322,33 @@ local function BuildAbilityPage(content, ability)
     sideDD:SetPoint("TOPLEFT", sideLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = sideDD
 
-    local xLabel = Label(content, "X offset")
+    local xLabel = Label(content, L.X_OFFSET)
     xLabel:SetPoint("LEFT", sideLabel, "LEFT", 180, 0)
     local xBox = CreateNumberBox(content, abilityKey, "nameplateX")
     xBox:SetPoint("TOPLEFT", xLabel, "BOTTOMLEFT", 6, -8)
 
-    local yLabel = Label(content, "Y offset")
+    local yLabel = Label(content, L.Y_OFFSET)
     yLabel:SetPoint("LEFT", xLabel, "LEFT", 90, 0)
     local yBox = CreateNumberBox(content, abilityKey, "nameplateY")
     yBox:SetPoint("TOPLEFT", yLabel, "BOTTOMLEFT", 6, -8)
 
-    local plateHint = Label(content,
-        "Pixels from the chosen side: X moves right (negative: left), Y moves up (negative: down).\n" ..
-        "Give Overpower and Revenge different offsets so they don't overlap when both are up.",
-        "GameFontDisableSmall")
+    local plateHint = Label(content, L.OFFSET_HINT, "GameFontDisableSmall")
     plateHint:SetJustifyH("LEFT")
     plateHint:SetPoint("TOPLEFT", sideDD, "BOTTOMLEFT", 0, -10)
 
-    local fallback = CreateCheckbox(content,
-        "If your target has no nameplate, show the icon at its normal position instead",
-        abilityKey, "nameplateFallback", plateHint, -8)
+    local fallback = CreateCheckbox(content, L.NAMEPLATE_FALLBACK, abilityKey, "nameplateFallback", plateHint, -8)
     fallback:SetPoint("TOPLEFT", plateHint, "BOTTOMLEFT", -4, -8)
 
     ---------------------------------------------------------------------------
     -- Action bar glow
     ---------------------------------------------------------------------------
-    local barHeader = Label(content, "Action bars", "GameFontNormalLarge")
+    local barHeader = Label(content, L.ACTION_BARS, "GameFontNormalLarge")
     barHeader:SetPoint("TOPLEFT", fallback, "BOTTOMLEFT", 4, -24)
 
-    local barGlow = CreateCheckbox(content,
-        "Glow " .. ability.name .. " on your action bars while it's up (any stance)",
-        abilityKey, "barGlow", barHeader, -6)
+    local barGlow = CreateCheckbox(content, L.BAR_GLOW:format(ability.name), abilityKey, "barGlow", barHeader, -6)
     barGlow:SetPoint("TOPLEFT", barHeader, "BOTTOMLEFT", -4, -6)
 
-    local barStyleLabel = Label(content, "Button glow")
+    local barStyleLabel = Label(content, L.BUTTON_GLOW)
     barStyleLabel:SetPoint("TOPLEFT", barGlow, "BOTTOMLEFT", 4, -12)
     local barStyleDD = CreateRadioDropdown(content, 160,
         function() return ns.GLOW_STYLES end,
@@ -376,33 +357,24 @@ local function BuildAbilityPage(content, ability)
     barStyleDD:SetPoint("TOPLEFT", barStyleLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = barStyleDD
 
-    local barPreview = CreateButton(content, "Preview", 80)
+    local barPreview = CreateButton(content, L.PREVIEW, 80)
     barPreview:SetPoint("LEFT", barStyleDD, "RIGHT", 10, 0)
     barPreview:SetScript("OnClick", function() ns.PreviewBarGlow(abilityKey) end)
 
-    local barHint = Label(content,
-        "Works with Blizzard's bars, EllesmereUI, and LibActionButton bars (Bartender4, ElvUI).\n" ..
-        "Only buttons on bars you can see glow, so put it on a bar that shows in every stance.",
-        "GameFontDisableSmall")
+    local barHint = Label(content, L.BAR_HINT, "GameFontDisableSmall")
     barHint:SetJustifyH("LEFT")
     barHint:SetPoint("TOPLEFT", barStyleDD, "BOTTOMLEFT", 0, -10)
 
     ---------------------------------------------------------------------------
     -- Countdown
     ---------------------------------------------------------------------------
-    local countdownHeader = Label(content, "Countdown", "GameFontNormalLarge")
+    local countdownHeader = Label(content, L.COUNTDOWN, "GameFontNormalLarge")
     countdownHeader:SetPoint("TOPLEFT", barHint, "BOTTOMLEFT", 0, -24)
 
-    local countdown = CreateCheckbox(content,
-        "Show the seconds left in the opening (on the icon, or beside the text if the icon is off)",
-        abilityKey, "showCountdown", countdownHeader, -6)
+    local countdown = CreateCheckbox(content, L.SHOW_COUNTDOWN, abilityKey, "showCountdown", countdownHeader, -6)
     countdown:SetPoint("TOPLEFT", countdownHeader, "BOTTOMLEFT", -4, -6)
 
-    local slashHint = Label(content,
-        "Slash commands: /opa (options), /opa test [overpower|revenge], /opa toggle [ability],\n" ..
-        "/opa unlock [ability], /opa lock [ability]. Without an ability, toggle/unlock/lock\n" ..
-        "apply to both and test plays Overpower.",
-        "GameFontDisableSmall")
+    local slashHint = Label(content, L.SLASH_HINT, "GameFontDisableSmall")
     slashHint:SetJustifyH("LEFT")
     slashHint:SetPoint("TOPLEFT", countdown, "BOTTOMLEFT", 4, -20)
 
@@ -437,13 +409,12 @@ end
 
 function ns.CreateOptions()
     local panel = CreateFrame("Frame")
-    panel.name = "Overpower Alert"
+    panel.name = L.ADDON_TITLE
 
-    local title = Label(panel, "Overpower Alert", "GameFontNormalLarge")
+    local title = Label(panel, L.ADDON_TITLE, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
 
-    local sub = Label(panel, "Plays an alert when Overpower or Revenge becomes usable. Each has its own settings.",
-        "GameFontHighlightSmall")
+    local sub = Label(panel, L.OPTIONS_SUBTITLE, "GameFontHighlightSmall")
     sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
 
     local pages, tabs, refreshers = {}, {}, {}

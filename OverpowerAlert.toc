@@ -14,6 +14,7 @@ Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
 Libs\LibSharedMedia-3.0\lib.xml
 Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.lua
 
+Strings.lua
 OverpowerAlert.lua
 Display.lua
 ActionBars.lua

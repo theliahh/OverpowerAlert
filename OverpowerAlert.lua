@@ -417,9 +417,11 @@ local function InOpening(abilityKey)
     return GetTime() < state[abilityKey].activeUntil
 end
 
+-- Keeps the end time (rather than clearing it) so a late "usable" signal
+-- right after can still be recognised as belonging to this opening.
 local function EndOpening(abilityKey)
     local st = state[abilityKey]
-    st.activeUntil, st.alerted = 0, false
+    st.activeUntil, st.alerted = math.min(st.activeUntil, GetTime()), false
 end
 
 -- Alert for the current opening if it hasn't been yet and everything allows
@@ -443,6 +445,8 @@ local function OnTrigger(abilityKey)
     MaybeAlert(abilityKey)
 end
 
+local ReadComboPoints -- with the Overpower code below
+
 -- The ability just became usable. Normally that's an opening we already know
 -- about (the player switched into its stance). It only starts one if we
 -- missed the trigger, and never right after one ended or was used up: Revenge
@@ -451,6 +455,9 @@ local function OnBecameUsable(abilityKey)
     local st, now = state[abilityKey], GetTime()
     if not InOpening(abilityKey) then
         if now < st.activeUntil + EVENT_LAG or now < st.consumedUntil then return end
+        -- When Overpower's combo point can be read, it's the real signal:
+        -- usable without one is a stale update (e.g. the target dying).
+        if abilityKey == "overpower" and ReadComboPoints() == 0 then return end
         st.alerted = false
         st.activeUntil = now + OPENING
     end
@@ -479,7 +486,7 @@ local PAIR_WINDOW = 1.0
 local comboPoints = 0 -- last readable value
 local lastHiddenComboChange, lastTargetDodge = -math.huge, -math.huge
 
-local function ReadComboPoints()
+function ReadComboPoints()
     local ok, v = pcall(UnitPower, "player", COMBO_POINTS)
     if not ok or not Readable(v) or type(v) ~= "number" then return nil end
     return v

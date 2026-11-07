@@ -70,7 +70,12 @@ local function UpdateCountdown(el)
     if el.unlocked then
         remaining = PREVIEW_SECONDS
     else
-        remaining = ns.GetRemaining(el.abilityKey) or (el.shownAt + PREVIEW_SECONDS - GetTime())
+        remaining = ns.GetRemaining(el.abilityKey)
+        if not remaining then
+            -- No opening: a preview counts down from when it showed; a real
+            -- alert whose opening just ended stays at 0.
+            remaining = el.isPreview and (el.shownAt + PREVIEW_SECONDS - GetTime()) or 0
+        end
     end
     fs:SetFormattedText("%.1f", math.max(remaining, 0))
     fs:Show()
@@ -151,6 +156,7 @@ local function ShowElement(el)
     el.fade:Stop()
     el.fading = false
     el.shownAt = GetTime()
+    el.isPreview = ns.GetRemaining(el.abilityKey) == nil
     el.frame:SetAlpha(1)
     el.frame:Show()
     if el.onShow then el.onShow() end

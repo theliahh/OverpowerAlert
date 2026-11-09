@@ -35,7 +35,7 @@ ns.L = L
 --------------------------------------------------------------------------------
 
 L.ADDON_TITLE = "Overpower Alert"
-L.OPTIONS_SUBTITLE = "Plays an alert when Overpower or Revenge becomes usable. Each has its own settings."
+L.OPTIONS_SUBTITLE = "Plays an alert when Overpower, Revenge or Victory Rush becomes usable. Each has its own settings."
 
 L.OVERPOWER = "Overpower"
 L.OVERPOWER_ALERT_TEXT = "OVERPOWER!"
@@ -44,6 +44,10 @@ L.OVERPOWER_DESCRIPTION = "Available for 5 seconds after your target dodges your
 L.REVENGE = "Revenge"
 L.REVENGE_ALERT_TEXT = "REVENGE!"
 L.REVENGE_DESCRIPTION = "Available for 5 seconds after you block, dodge or parry. Can only be cast in Defensive Stance."
+
+L.VICTORY_RUSH = "Victory Rush"
+L.VICTORY_RUSH_ALERT_TEXT = "VICTORY RUSH!"
+L.VICTORY_RUSH_DESCRIPTION = "Available for 20 seconds after you kill an enemy that gives experience or honor."
 
 L.BATTLE_STANCE = "Battle Stance"
 L.DEFENSIVE_STANCE = "Defensive Stance"
@@ -65,6 +69,7 @@ L.ALERT_SOUND = "Alert sound"
 L.SOUND_GROUP = "%s (%d)"                      -- %s: group name, %d: number of sounds
 L.SHARED_MEDIA = "Shared Media"
 L.SHARED_MEDIA_NONE = "Shared Media (none installed)"
+L.SOUND_NONE = "None"
 L.SOUND_CUSTOM_MENU = "Custom (path or file ID)"
 L.SOUND_CUSTOM = "Custom"                      -- shown on the dropdown once picked
 L.TEST = "Test"
@@ -133,7 +138,7 @@ L.SIDE_RIGHT = "Right"
 L.X_OFFSET = "X offset"
 L.Y_OFFSET = "Y offset"
 L.OFFSET_HINT = "Pixels from the chosen side: X moves right (negative: left), Y moves up (negative: down).\n" ..
-    "Give Overpower and Revenge different offsets so they don't overlap when both are up."
+    "Give each ability different offsets so they don't overlap when more than one is up."
 L.NAMEPLATE_FALLBACK = "If your target has no nameplate, show the icon at its normal position instead"
 
 --------------------------------------------------------------------------------
@@ -152,9 +157,9 @@ L.BAR_HINT = "Works with Blizzard's bars, EllesmereUI, and LibActionButton bars 
 
 L.COUNTDOWN = "Countdown"
 L.SHOW_COUNTDOWN = "Show the seconds left in the opening (on the icon, or beside the text if the icon is off)"
-L.SLASH_HINT = "Slash commands: /opa (options), /opa test [overpower|revenge], /opa toggle [ability],\n" ..
+L.SLASH_HINT = "Slash commands: /opa (options), /opa test [overpower|revenge|victoryrush], /opa toggle [ability],\n" ..
     "/opa unlock [ability], /opa lock [ability]. Without an ability, toggle/unlock/lock\n" ..
-    "apply to both and test plays Overpower."
+    "apply to all and test plays Overpower."
 
 --------------------------------------------------------------------------------
 -- On screen while unlocked
@@ -167,6 +172,6 @@ L.MOVE_ICON_HINT = "%s icon: drag to move, right-click to lock" -- %s: ability n
 -- Chat messages
 --------------------------------------------------------------------------------
 
-L.UNKNOWN_ABILITY = "unknown ability \"%s\" (use overpower or revenge)" -- %s: what was typed
+L.UNKNOWN_ABILITY = "unknown ability \"%s\" (use overpower, revenge or victoryrush)" -- %s: what was typed
 L.ALERT_ENABLED = "%s alert enabled"           -- %s: ability name
 L.ALERT_DISABLED = "%s alert disabled"         -- %s: ability name

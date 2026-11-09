@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: Overpower Alert
-## Notes: Alerts you when Overpower or Revenge becomes usable.
+## Notes: Alerts you when Overpower, Revenge or Victory Rush becomes usable.
 ## Author: Theliahh
 ## Version: @project-version@
 ## SavedVariables: OverpowerAlertDB

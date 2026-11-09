@@ -29,6 +29,23 @@ ns.ABILITIES = {
             textY = 240, iconX = 80, iconY = 100,
         },
     },
+    {
+        key = "victoryrush", name = L.VICTORY_RUSH,
+        ids = { 402927, 34428 }, -- Forever (rune version), then other game versions
+        duration = 20, -- after a kill, rather than the usual 5
+        text = L.VICTORY_RUSH_ALERT_TEXT, color = { 0.3, 1, 0.3 },
+        icon = 132342, -- Ability_Warrior_Devastate
+        description = L.VICTORY_RUSH_DESCRIPTION,
+        defaults = {
+            -- Just the icon: no sound or text unless the player turns them on.
+            sound = "NONE",
+            showText = false,
+            -- Which stances it can be cast in on this client isn't known yet,
+            -- so all of them.
+            stances = { battle = true, defensive = true, berserker = true },
+            textY = 300, iconX = 160, iconY = 100,
+        },
+    },
 }
 ns.ABILITY_BY_KEY = {}
 for _, ability in ipairs(ns.ABILITIES) do ns.ABILITY_BY_KEY[ability.key] = ability end
@@ -50,7 +67,7 @@ local function Defaults(ability)
         customSound = "",
         channel = "Master",
         stances = stances,
-        showText = true,
+        showText = ability.defaults.showText ~= false,
         textSize = 36,
         textPos = nil, -- { point, relPoint, x, y }; nil = default spot
         showIcon = true,
@@ -193,6 +210,7 @@ ns.CDM_SOUNDS = {
 --   "cdm:<soundKitID>"  Cooldown Manager sound
 --   "sm:<name>"         LibSharedMedia sound (BigWigs, SharedMedia packs, etc.)
 --   "CUSTOM"            user-entered path or FileDataID
+--   "NONE"              no sound
 local cdmLabels = {}
 for _, category in ipairs(ns.CDM_SOUNDS) do
     for _, s in ipairs(category[2]) do
@@ -202,7 +220,7 @@ end
 
 function ns.IsValidSoundKey(key)
     return type(key) == "string"
-        and (cdmLabels[key] ~= nil or key:find("^sm:") ~= nil or key == "CUSTOM")
+        and (cdmLabels[key] ~= nil or key:find("^sm:") ~= nil or key == "CUSTOM" or key == "NONE")
 end
 
 -- Every sound registered with LibSharedMedia, sorted, excluding "None".
@@ -220,6 +238,7 @@ end
 
 function ns.GetSoundLabel(key)
     if key == "CUSTOM" then return L.SOUND_CUSTOM end
+    if key == "NONE" then return L.SOUND_NONE end
     local smName = key and key:match("^sm:(.+)")
     if smName then return smName end
     return cdmLabels[key] or key or "?"
@@ -325,10 +344,13 @@ end
 --     dodges and parries, in any stance.
 --   * Overpower: the opening is the player's combo point (power type 4): 1 for
 --     the 5 seconds after the target dodges the player's attack, in any stance.
---   * Both: C_Spell.IsSpellUsable turns true during an opening, but only in
---     the ability's own stance. Used as a backup signal.
--- An opening lasts OPENING seconds from its last trigger, until the player
--- casts the ability, or (Overpower) until the combo point goes away.
+--   * Victory Rush: the "Victorious" buff the player gets for 20 seconds after
+--     a kill.
+--   * All: C_Spell.IsSpellUsable turns true during an opening, but only in
+--     the stances the ability can be cast in. Used as a backup signal.
+-- An opening lasts the ability's duration (5 seconds, or 20 for Victory Rush)
+-- from its last trigger, until the player casts the ability, or until the
+-- Overpower combo point or Victorious buff goes away.
 --
 -- Each opening alerts at most once: the first moment it's up while the player
 -- is in a stance ticked for that ability and the ability is off cooldown. So
@@ -336,7 +358,7 @@ end
 -- switching stances again doesn't alert a second time.
 --------------------------------------------------------------------------------
 
-local OPENING = 5.0   -- how long the ability stays available after a trigger
+local OPENING = 5.0   -- how long an ability stays available after a trigger, unless it says otherwise
 local EVENT_LAG = 0.2 -- a "usable" signal this soon after an opening ended belongs to it
 
 local frame = CreateFrame("Frame")
@@ -413,6 +435,11 @@ function ns.CurrentStance()
     return ns.STANCES[index] and ns.STANCES[index].key
 end
 
+-- Seconds the ability stays available after a trigger.
+function ns.Duration(abilityKey)
+    return ns.ABILITY_BY_KEY[abilityKey].duration or OPENING
+end
+
 local function InOpening(abilityKey)
     return GetTime() < state[abilityKey].activeUntil
 end
@@ -437,15 +464,16 @@ local function MaybeAlert(abilityKey)
 end
 
 -- A real trigger (block, dodge or parry for Revenge; a new combo point for
--- Overpower): starts a new opening or extends the current one.
-local function OnTrigger(abilityKey)
+-- Overpower; the Victorious buff): starts a new opening or extends the
+-- current one. `untilTime` is when it ends, if the game says.
+local function OnTrigger(abilityKey, untilTime)
     local st = state[abilityKey]
     if not InOpening(abilityKey) then st.alerted = false end
-    st.activeUntil = GetTime() + OPENING
+    st.activeUntil = untilTime or (GetTime() + ns.Duration(abilityKey))
     MaybeAlert(abilityKey)
 end
 
-local ReadComboPoints -- with the Overpower code below
+local ReadComboPoints, ReadVictorious -- with the Overpower and Victory Rush code below
 
 -- The ability just became usable. Normally that's an opening we already know
 -- about (the player switched into its stance). It only starts one if we
@@ -458,13 +486,18 @@ local function OnBecameUsable(abilityKey)
         -- When Overpower's combo point can be read, it's the real signal:
         -- usable without one is a stale update (e.g. the target dying).
         if abilityKey == "overpower" and ReadComboPoints() == 0 then return end
+        -- Likewise the Victorious buff, when the aura can be read.
+        if abilityKey == "victoryrush" and ReadVictorious() == false then return end
         st.alerted = false
-        st.activeUntil = now + OPENING
+        st.activeUntil = now + ns.Duration(abilityKey)
     end
     MaybeAlert(abilityKey)
 end
 
+local CheckVictorious -- with the Victory Rush code below
+
 local function Check()
+    CheckVictorious()
     for _, ability in ipairs(ns.ABILITIES) do
         local key = ability.key
         local st = state[key]
@@ -525,6 +558,36 @@ local function OnPlayerCombat(action, flagText)
     if avoided then OnTrigger("revenge") end
 end
 
+-- Victory Rush: the "Victorious" buff, up for 20 seconds after a kill that
+-- gives experience or honor. Read with C_UnitAuras; ReadVictorious returns
+-- the buff's end time (or true if it's up but the time can't be read), false
+-- if it's not up, or nil if the game won't say.
+local VICTORIOUS = 32216
+local victorious = false -- last readable answer: buff up or not
+
+function ReadVictorious()
+    if not (C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID) then return nil end
+    local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, VICTORIOUS)
+    if not ok or not Readable(aura) then return nil end
+    if aura == nil then return false end
+    local expires = aura.expirationTime
+    if type(expires) == "number" and Readable(expires) and expires > 0 then return expires end
+    return true
+end
+
+function CheckVictorious()
+    local v = ReadVictorious()
+    if v == nil then return end
+    local up = v ~= false
+    if up and not victorious then
+        OnTrigger("victoryrush", type(v) == "number" and v or nil)
+    elseif not up and victorious then
+        -- Used or expired.
+        EndOpening("victoryrush")
+    end
+    victorious = up
+end
+
 -- Casting the ability uses up its opening and hides its text and icon. The
 -- next real trigger starts a new opening; until this one would have run out,
 -- the ability turning usable again (stance switch) doesn't.
@@ -538,7 +601,7 @@ local function OnSpellCast(spellID)
     local key = spellOwner[spellID]
     if not key then return end
     EndOpening(key)
-    state[key].consumedUntil = GetTime() + OPENING
+    state[key].consumedUntil = GetTime() + ns.Duration(key)
     if ns.HideAlert then ns.HideAlert(key) end
 end
 
@@ -546,6 +609,7 @@ end
 -- up while this is true.
 function ns.IsActive(abilityKey)
     if InOpening(abilityKey) then return true end
+    if abilityKey == "victoryrush" then return victorious end
     return abilityKey == "overpower" and comboPoints > 0
 end
 
@@ -570,8 +634,9 @@ local function Refresh()
         st.spellID = FindKnownRank(ability)
         st.wasUsable = ns.IsUsable(ability.key)
     end
-    -- Take the current value without alerting on an opening already up.
+    -- Take the current values without alerting on an opening already up.
     comboPoints = ReadComboPoints() or 0
+    victorious = (ReadVictorious() or false) ~= false
 end
 
 frame:SetScript("OnEvent", function(self, event, ...)
@@ -600,6 +665,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(self.RegisterUnitEvent, self, "UNIT_COMBAT", "player", "target")
         pcall(self.RegisterUnitEvent, self, "UNIT_POWER_UPDATE", "player")
         pcall(self.RegisterUnitEvent, self, "UNIT_SPELLCAST_SUCCEEDED", "player")
+        pcall(self.RegisterUnitEvent, self, "UNIT_AURA", "player")
         if InCombatLockdown() then StartTicker() end
         return
     end
@@ -626,6 +692,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local unit, _, spellID = ...
         if unit == "player" then OnSpellCast(spellID) end
+    elseif event == "UNIT_AURA" then
+        if ... == "player" then CheckVictorious() end
     else
         Check()
     end
@@ -638,7 +706,11 @@ frame:RegisterEvent("PLAYER_LOGIN")
 -- Slash command
 --------------------------------------------------------------------------------
 
-local ABILITY_ALIASES = { op = "overpower", overpower = "overpower", rev = "revenge", revenge = "revenge" }
+local ABILITY_ALIASES = {
+    op = "overpower", overpower = "overpower",
+    rev = "revenge", revenge = "revenge",
+    vr = "victoryrush", victoryrush = "victoryrush", victory = "victoryrush",
+}
 
 local function Print(text)
     print("|cffff6619" .. L.ADDON_TITLE .. "|r " .. text)
@@ -675,7 +747,134 @@ SlashCmdList.OVERPOWERALERT = function(msg)
         ns.SetUnlocked(abilityKey, nil, true)
     elseif cmd == "lock" then
         ns.SetUnlocked(abilityKey, nil, false)
+    elseif cmd == "probe" then -- TEMPORARY, see the probe below
+        ns.ToggleProbe()
     elseif ns.OpenOptions then
         ns.OpenOptions()
+    end
+end
+
+--------------------------------------------------------------------------------
+-- TEMPORARY probe (/opa probe): which enemy's dodge gives the Overpower combo
+-- point, and what happens to the combo point when the target changes. Prints
+-- to chat; secret values print as <secret>. Remove once answered.
+--------------------------------------------------------------------------------
+
+do
+    local probe, t0, lastPrinted, lastUsable
+    local OVERPOWER_IDS = {}
+    for _, id in ipairs(ns.ABILITY_BY_KEY.overpower.ids) do OVERPOWER_IDS[id] = true end
+
+    local function Show(v)
+        if issecretvalue and issecretvalue(v) then return "<secret>" end
+        return tostring(v)
+    end
+
+    local function Out(text)
+        print(string.format("|cffff6619OPA|r %.2f %s", GetTime() - t0, text))
+    end
+
+    -- Whether `unit` is the current target: yes / no / <secret>.
+    local function IsTarget(unit)
+        local ok, same = pcall(UnitIsUnit, unit, "target")
+        if not ok then return "?" end
+        if issecretvalue and issecretvalue(same) then return "<secret>" end
+        return same and "yes" or "no"
+    end
+
+    local function Name(unit)
+        local ok, name = pcall(UnitName, unit)
+        return ok and Show(name) or "?"
+    end
+
+    -- The nameplate token showing the target, if any.
+    local function TargetPlate()
+        for i = 1, 40 do
+            local unit = "nameplate" .. i
+            if UnitExists(unit) and IsTarget(unit) == "yes" then return unit end
+        end
+        return "none"
+    end
+
+    -- Combo points two ways: the player's power (what the addon reads) and
+    -- the old per-target API, if this client has it.
+    local function Combo()
+        local ok1, power = pcall(UnitPower, "player", 4)
+        local onTarget = "n/a"
+        if GetComboPoints then
+            local ok2, v = pcall(GetComboPoints, "player", "target")
+            onTarget = ok2 and Show(v) or "err"
+        end
+        return "power=" .. (ok1 and Show(power) or "err") .. " onTarget=" .. onTarget
+    end
+
+    local function Usable()
+        local id = ns.GetSpellID("overpower")
+        if not id then return "unknown" end
+        local ok, usable, noPower = pcall(C_Spell.IsSpellUsable, id)
+        if not ok then return "err" end
+        return Show(usable) .. "/" .. Show(noPower)
+    end
+
+    local function Poll()
+        local combo = Combo()
+        if combo ~= lastPrinted then
+            Out("COMBO " .. combo)
+            lastPrinted = combo
+        end
+        local usable = Usable()
+        if usable ~= lastUsable then
+            Out("OP usable=" .. usable)
+            lastUsable = usable
+        end
+    end
+
+    local function OnEvent(_, event, ...)
+        if event == "UNIT_COMBAT" then
+            local unit, action, flagText = ...
+            if unit == "player" then return end -- the enemy side is what we want
+            local a = Show(action)
+            if a ~= "DODGE" and a ~= "<secret>" then return end
+            Out(string.format("DODGE unit=%s target=%s name=%s flag=%s",
+                Show(unit), IsTarget(unit), Name(unit), Show(flagText)))
+        elseif event == "PLAYER_TARGET_CHANGED" then
+            Out(string.format("TARGET -> %s plate=%s %s", Name("target"), TargetPlate(), Combo()))
+            C_Timer.After(0.1, function() if probe then Out("  +0.1s " .. Combo()) end end)
+            C_Timer.After(0.5, function() if probe then Out("  +0.5s " .. Combo()) end end)
+        elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+            local unit, _, spellID = ...
+            if unit == "player" and not (issecretvalue and issecretvalue(spellID)) and OVERPOWER_IDS[spellID] then
+                Out("CAST Overpower on " .. Name("target") .. " " .. Combo())
+            end
+        elseif event == "UI_ERROR_MESSAGE" then
+            local _, message = ...
+            Out("ERROR " .. Show(message))
+        end
+        Poll()
+    end
+
+    function ns.ToggleProbe()
+        if probe then
+            probe:UnregisterAllEvents()
+            probe:SetScript("OnUpdate", nil)
+            probe = nil
+            print("|cffff6619OPA|r probe off")
+            return
+        end
+        t0, lastPrinted, lastUsable = GetTime(), nil, nil
+        probe = CreateFrame("Frame")
+        probe:RegisterEvent("UNIT_COMBAT") -- every unit, nameplates included
+        probe:RegisterEvent("PLAYER_TARGET_CHANGED")
+        probe:RegisterEvent("UI_ERROR_MESSAGE")
+        pcall(probe.RegisterUnitEvent, probe, "UNIT_SPELLCAST_SUCCEEDED", "player")
+        probe:SetScript("OnEvent", OnEvent)
+        local elapsed = 0
+        probe:SetScript("OnUpdate", function(_, dt)
+            elapsed = elapsed + dt
+            if elapsed < 0.1 then return end
+            elapsed = 0
+            Poll()
+        end)
+        print("|cffff6619OPA|r probe on (/opa probe again to stop). " .. Combo())
     end
 end

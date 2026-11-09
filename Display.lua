@@ -50,7 +50,8 @@ end
 
 -- Countdown of the seconds left in the opening, to one decimal place. Shown
 -- on the icon, or beside the text when the icon is turned off.
-local PREVIEW_SECONDS = 5 -- previews (/opa test, Preview) have no real opening
+-- Previews (/opa test, Preview) have no real opening; they count down from
+-- the ability's duration.
 
 local function CountdownWanted(el)
     local cfg = ns.Config(el.abilityKey)
@@ -68,13 +69,13 @@ local function UpdateCountdown(el)
     if el.fading then return end
     local remaining
     if el.unlocked then
-        remaining = PREVIEW_SECONDS
+        remaining = ns.Duration(el.abilityKey)
     else
         remaining = ns.GetRemaining(el.abilityKey)
         if not remaining then
             -- No opening: a preview counts down from when it showed; a real
             -- alert whose opening just ended stays at 0.
-            remaining = el.isPreview and (el.shownAt + PREVIEW_SECONDS - GetTime()) or 0
+            remaining = el.isPreview and (el.shownAt + ns.Duration(el.abilityKey) - GetTime()) or 0
         end
     end
     fs:SetFormattedText("%.1f", math.max(remaining, 0))

@@ -171,6 +171,8 @@ local function BuildAbilityPage(content, ability)
     end
 
     soundDD:SetupMenu(function(_, root)
+        root:CreateRadio(L.SOUND_NONE, IsSound, SetSound, "NONE")
+        root:CreateDivider()
         for _, group in ipairs(ns.CDM_SOUNDS) do
             local list = {}
             for _, s in ipairs(group[2]) do

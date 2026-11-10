@@ -82,6 +82,7 @@ local function Defaults(ability)
         showCountdown = false,
         barGlow = false,           -- glow the ability's action bar buttons
         barGlowStyle = "proc",
+        showOnCooldown = false,    -- alert even while the ability is on cooldown
     }
 end
 
@@ -458,7 +459,9 @@ local function MaybeAlert(abilityKey)
     if st.alerted or not st.spellID or not cfg.enabled or not InOpening(abilityKey) then return end
     local stance = ns.CurrentStance()
     if not (stance and cfg.stances[stance]) then return end
-    if OnCooldown(abilityKey) then return end
+    -- On cooldown: wait for it, unless the player wants the alert anyway (the
+    -- icon then shows greyed out with the cooldown swipe).
+    if not cfg.showOnCooldown and OnCooldown(abilityKey) then return end
     st.alerted = true
     ns.PreviewAlert(abilityKey)
 end
@@ -528,7 +531,9 @@ end
 local function OnComboPointsChanged()
     local v = ReadComboPoints()
     if v then
-        local gained = v > 0 and comboPoints == 0
+        -- Each dodge adds a point (seen going 1 -> 2) and restarts the
+        -- 5 seconds, so any increase is a new trigger.
+        local gained = v > comboPoints
         comboPoints = v
         if gained then
             OnTrigger("overpower")
@@ -569,7 +574,13 @@ function ReadVictorious()
     if not (C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID) then return nil end
     local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, VICTORIOUS)
     if not ok or not Readable(aura) then return nil end
-    if aura == nil then return false end
+    if aura == nil then
+        -- In combat the game hides the buff (it only shows up once combat
+        -- ends), so "not found" means "can't tell" there, and Victory Rush
+        -- becoming usable is the signal instead.
+        if InCombatLockdown() then return nil end
+        return false
+    end
     local expires = aura.expirationTime
     if type(expires) == "number" and Readable(expires) and expires > 0 then return expires end
     return true
@@ -579,11 +590,8 @@ function CheckVictorious()
     local v = ReadVictorious()
     if v == nil then return end
     local up = v ~= false
-    -- In combat the aura can stop being reported while the buff is still up
-    -- (it went missing on pulling a new mob), so "not up" is only believed
-    -- out of combat. In combat the opening ends when Victory Rush is cast
-    -- (OnSpellCast) or the buff's time runs out.
-    if not up and InCombatLockdown() then return end
+    -- ReadVictorious can't see the buff in combat, so there the opening ends
+    -- when Victory Rush is cast (OnSpellCast) or the buff's time runs out.
     local st = state.victoryrush
     if up and (not victorious or (type(v) == "number" and v > st.activeUntil + 0.5)) then
         -- Gained, or refreshed by another kill.
@@ -608,7 +616,9 @@ local function OnSpellCast(spellID)
     local key = spellOwner[spellID]
     if not key then return end
     EndOpening(key)
-    state[key].consumedUntil = GetTime() + ns.Duration(key)
+    -- Victory Rush's usability follows the buff, so after a short grace period
+    -- it turning usable again means another kill.
+    state[key].consumedUntil = GetTime() + (key == "victoryrush" and 1 or ns.Duration(key))
     if ns.HideAlert then ns.HideAlert(key) end
 end
 

@@ -136,11 +136,15 @@ local function BuildAbilityPage(content, ability)
     local stanceHint = Label(content, L.STANCE_HINT, "GameFontDisableSmall")
     stanceHint:SetPoint("TOPLEFT", stanceLabel, "BOTTOMLEFT", 0, -12)
 
+    local onCooldown = CreateCheckbox(content, L.SHOW_ON_COOLDOWN:format(ability.name),
+        abilityKey, "showOnCooldown", stanceHint, -8)
+    onCooldown:SetPoint("TOPLEFT", stanceHint, "BOTTOMLEFT", -4, -8)
+
     ---------------------------------------------------------------------------
     -- Sound
     ---------------------------------------------------------------------------
     local soundLabel = Label(content, L.ALERT_SOUND)
-    soundLabel:SetPoint("TOPLEFT", stanceHint, "BOTTOMLEFT", 0, -20)
+    soundLabel:SetPoint("TOPLEFT", onCooldown, "BOTTOMLEFT", 4, -16)
 
     local customBox
     local soundDD = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
@@ -455,7 +459,7 @@ function ns.CreateOptions()
         scroll:SetPoint("LEFT", panel, "LEFT", 0, 0)
         scroll:SetPoint("BOTTOMRIGHT", -28, 4)
         local content = CreateFrame("Frame", nil, scroll)
-        content:SetSize(600, 1450)
+        content:SetSize(600, 1480)
         scroll:SetScrollChild(content)
         scroll:SetScript("OnSizeChanged", function(_, width) content:SetWidth(width) end)
         scroll:Hide()

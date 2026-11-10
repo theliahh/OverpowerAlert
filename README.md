@@ -22,7 +22,7 @@ You choose which stances each ability alerts in: Battle, Defensive and Berserker
 
 - The alert plays the first moment an opening is up while you're in a ticked stance. If it happens in an unticked stance and you switch into a ticked one before it runs out, it alerts then.
 - Each opening only alerts once, however much you switch stances.
-- If the ability is on cooldown, the alert waits until it's ready, as long as the opening is still up.
+- If the ability is on cooldown, the alert waits until it's ready, as long as the opening is still up. Tick **Alert even while on cooldown** to be alerted straight away instead: the icon then shows greyed out with a cooldown swipe until the ability is ready.
 
 ## Options
 
@@ -30,6 +30,7 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 
 - **Enable:** turn that ability's alert on or off.
 - **Alert in:** the stances to alert in (see above).
+- **Alert even while on cooldown** (off by default): alerts as soon as the opening is up, even if the ability is on cooldown. Until it's ready, the icon is greyed out with a cooldown swipe and no glow.
 - **Alert sound:** pick from:
   - **None:** no sound.
   - **Cooldown Manager sounds:** the same 93 sounds Blizzard's Cooldown Manager offers for its alerts, in the same categories (Animals, Devices, Impacts, Instruments, Short, Warcraft II, Warcraft III). The defaults are Warhorn for Overpower and Sword Shing for Revenge. Victory Rush has no sound by default.

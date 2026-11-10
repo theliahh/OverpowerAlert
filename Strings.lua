@@ -60,6 +60,7 @@ L.BERSERKER_STANCE = "Berserker Stance"
 L.ENABLE_ALERT = "Enable %s alert"             -- %s: ability name
 L.ALERT_IN = "Alert in:"
 L.STANCE_HINT = "Alerts once per opening, the first moment you're in a ticked stance while it's up."
+L.SHOW_ON_COOLDOWN = "Alert even while %s is on cooldown (the icon shows greyed out with the cooldown)" -- %s: ability name
 
 --------------------------------------------------------------------------------
 -- Options: sound

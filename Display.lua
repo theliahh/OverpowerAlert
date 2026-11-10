@@ -258,6 +258,53 @@ local function PlaceIcon(el)
     el.body:SetShown(mode ~= "hidden")
 end
 
+-- With "alert even while on cooldown", the icon looks like an action button
+-- on cooldown until it comes off: greyed out, a swipe for the time left, and
+-- no glow. Checked a few times a second while the icon is up.
+local COOLDOWN_CHECK = 0.1
+
+-- Starts the swipe from the game's cooldown. In combat the start and duration
+-- can be secret, so the duration object (which the swipe can draw without us
+-- reading it) comes first.
+local function StartSwipe(el)
+    local id = ns.GetSpellID(el.abilityKey)
+    if not id then return end
+    local swipe = el.swipe
+    if C_Spell.GetSpellCooldownDuration and swipe.SetCooldownFromDurationObject then
+        local ok, dur = pcall(C_Spell.GetSpellCooldownDuration, id, true) -- true: not the GCD
+        if ok and dur and pcall(swipe.SetCooldownFromDurationObject, swipe, dur) then return end
+    end
+    local ok, info = pcall(C_Spell.GetSpellCooldown, id)
+    if ok and type(info) == "table" then
+        pcall(swipe.SetCooldown, swipe, info.startTime, info.duration)
+    end
+end
+
+local function SetCoolingDown(el, cooling)
+    if el.coolingDown == cooling then return end
+    el.coolingDown = cooling
+    el.texture:SetDesaturated(cooling)
+    if cooling then
+        StopGlow(el.body)
+        StartSwipe(el)
+    else
+        el.swipe:Clear()
+        if el.frame:IsShown() and not el.fading then
+            StartGlow(el.body, ns.Config(el.abilityKey).iconGlow)
+        end
+    end
+end
+
+local function UpdateCooldownLook(el)
+    local now = GetTime()
+    if now < (el.nextCooldownCheck or 0) then return end
+    el.nextCooldownCheck = now + COOLDOWN_CHECK
+    -- Previews and moving the icon always show it ready.
+    local cooling = not el.unlocked and not el.isPreview
+        and ns.Config(el.abilityKey).showOnCooldown and ns.OnCooldown(el.abilityKey)
+    SetCoolingDown(el, cooling and true or false)
+end
+
 function ns.ApplyIconStyle(abilityKey)
     local el = Element(abilityKey, "icon")
     if not el then return end
@@ -266,7 +313,7 @@ function ns.ApplyIconStyle(abilityKey)
     el.frame:SetSize(size, size)
     el.countdown:SetFont(FONT, math.max(12, math.floor(size * 0.4)), "THICKOUTLINE")
     -- Glows are sized when they start, so restart any that's showing.
-    if el.frame:IsShown() then StartGlow(el.body, cfg.iconGlow) else StopGlow(el.body) end
+    if el.frame:IsShown() and not el.coolingDown then StartGlow(el.body, cfg.iconGlow) else StopGlow(el.body) end
 end
 
 function ns.ShowIcon(abilityKey)
@@ -313,6 +360,15 @@ function ns.InitDisplay()
         texture:SetAllPoints()
         texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         iconEl.texture = texture
+        -- Cooldown swipe, for alerts allowed while on cooldown. Our own
+        -- countdown shows the opening, so the swipe has no numbers.
+        local swipe = CreateFrame("Cooldown", nil, body, "CooldownFrameTemplate")
+        swipe:SetAllPoints()
+        swipe:SetDrawEdge(false)
+        swipe:SetHideCountdownNumbers(true)
+        if swipe.SetDrawBling then swipe:SetDrawBling(false) end
+        swipe:SetFrameLevel(body:GetFrameLevel() + 2)
+        iconEl.swipe = swipe
         -- On its own layer above the glow, so the glow never covers the number.
         local countdownLayer = CreateFrame("Frame", nil, body)
         countdownLayer:SetAllPoints()
@@ -327,10 +383,17 @@ function ns.InitDisplay()
             RefreshIconTexture(iconEl, ability)
             iconEl.placedKey = nil
             PlaceIcon(iconEl)
-            StartGlow(body, ns.Config(ability.key).iconGlow)
+            iconEl.coolingDown, iconEl.nextCooldownCheck = nil, 0
+            UpdateCooldownLook(iconEl)
         end
-        iconEl.onUpdate = function() PlaceIcon(iconEl) end
-        f:HookScript("OnHide", function() StopGlow(body) end)
+        iconEl.onUpdate = function()
+            PlaceIcon(iconEl)
+            UpdateCooldownLook(iconEl)
+        end
+        f:HookScript("OnHide", function()
+            StopGlow(body)
+            SetCoolingDown(iconEl, false)
+        end)
         ApplyPosition(iconEl)
         ns.ApplyIconStyle(ability.key)
     end

@@ -47,7 +47,7 @@ L.REVENGE_DESCRIPTION = "Available for 5 seconds after you block, dodge or parry
 
 L.VICTORY_RUSH = "Victory Rush"
 L.VICTORY_RUSH_ALERT_TEXT = "VICTORY RUSH!"
-L.VICTORY_RUSH_DESCRIPTION = "Available for 20 seconds after you kill an enemy that gives experience or honor."
+L.VICTORY_RUSH_DESCRIPTION = "Available for 20 seconds after you kill an enemy that gives experience or honor. Can be cast in any stance."
 
 L.BATTLE_STANCE = "Battle Stance"
 L.DEFENSIVE_STANCE = "Defensive Stance"

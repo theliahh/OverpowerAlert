@@ -40,8 +40,8 @@ ns.ABILITIES = {
             -- Just the icon: no sound or text unless the player turns them on.
             sound = "NONE",
             showText = false,
-            -- Which stances it can be cast in on this client isn't known yet,
-            -- so all of them.
+            -- Castable in any stance (confirmed in game); the ticks are there so
+            -- players can limit the alert to the stances they want.
             stances = { battle = true, defensive = true, berserker = true },
             textY = 300, iconX = 160, iconY = 100,
         },
@@ -579,7 +579,14 @@ function CheckVictorious()
     local v = ReadVictorious()
     if v == nil then return end
     local up = v ~= false
-    if up and not victorious then
+    -- In combat the aura can stop being reported while the buff is still up
+    -- (it went missing on pulling a new mob), so "not up" is only believed
+    -- out of combat. In combat the opening ends when Victory Rush is cast
+    -- (OnSpellCast) or the buff's time runs out.
+    if not up and InCombatLockdown() then return end
+    local st = state.victoryrush
+    if up and (not victorious or (type(v) == "number" and v > st.activeUntil + 0.5)) then
+        -- Gained, or refreshed by another kill.
         OnTrigger("victoryrush", type(v) == "number" and v or nil)
     elseif not up and victorious then
         -- Used or expired.
@@ -609,7 +616,8 @@ end
 -- up while this is true.
 function ns.IsActive(abilityKey)
     if InOpening(abilityKey) then return true end
-    if abilityKey == "victoryrush" then return victorious end
+    -- Victory Rush's opening runs to the buff's own end time.
+    if abilityKey == "victoryrush" then return false end
     return abilityKey == "overpower" and comboPoints > 0
 end
 

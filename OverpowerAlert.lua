@@ -562,7 +562,7 @@ end
 -- gives experience or honor. Read with C_UnitAuras; ReadVictorious returns
 -- the buff's end time (or true if it's up but the time can't be read), false
 -- if it's not up, or nil if the game won't say.
-local VICTORIOUS = 32216
+local VICTORIOUS = 402975 -- confirmed in game on Forever
 local victorious = false -- last readable answer: buff up or not
 
 function ReadVictorious()

@@ -559,7 +559,10 @@ end
 local function OnPlayerCombat(action, flagText)
     if not (Readable(action) and Readable(flagText)) then return end
     local avoided = action == "BLOCK" or action == "DODGE" or action == "PARRY"
-        or flagText == "BLOCK" -- partial block
+        -- A hit that was partly blocked comes as WOUND with BLOCK_REDUCED (how
+        -- Blizzard's CombatFeedback.lua reads it); BLOCK is a hit fully
+        -- blocked. Shield Block makes these the usual case.
+        or flagText == "BLOCK_REDUCED" or flagText == "BLOCK"
     if avoided then OnTrigger("revenge") end
 end
 

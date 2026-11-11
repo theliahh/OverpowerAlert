@@ -90,3 +90,57 @@ local function wrongStance()
     mock.waitSeconds(0.3)
     expect(icon()).toBeShown()
 end
+
+-- The game's own usability, for the tests below. It turns true a fraction of
+-- a second before UNIT_COMBAT reports the block.
+local usable = false
+local function setUsable(v)
+    usable = v
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitFrames(2)
+end
+local function stubUsable()
+    usable = false
+    mock.stub(C_Spell, "IsSpellUsable", function(id)
+        if id == REVENGE then return usable, false end
+        return false, false
+    end)
+end
+
+@test("ends when the game stops it being usable, not on our late timer")
+local function endsWithUsable()
+    stubUsable()
+    setUsable(true)
+    mock.waitSeconds(0.25)
+    hit("WOUND", "BLOCK_REDUCED")
+    expect(icon()).toBeShown()
+    mock.waitSeconds(4.3)
+    expect(icon()).toBeShown()
+    setUsable(false)
+    mock.waitSeconds(0.5) -- the fade-out
+    expect(icon()).never.toBeShown()
+end
+
+@test("the block arriving late doesn't push the end back")
+local function lateBlock()
+    stubUsable()
+    setUsable(true)
+    mock.waitSeconds(0.3)
+    hit("WOUND", "BLOCK_REDUCED")
+    mock.waitSeconds(4.85) -- ~5.2s after it became usable, ~4.9s after the block
+    expect(icon()).never.toBeShown()
+end
+
+@test("leaving Defensive Stance doesn't end it")
+local function stanceSwitch()
+    stubUsable()
+    setUsable(true)
+    hit("WOUND", "BLOCK_REDUCED")
+    mock.waitSeconds(1)
+    stance = 1
+    usable = false -- not castable in Battle Stance
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    setUsable(false)
+    mock.waitSeconds(0.3)
+    expect(icon()).toBeShown()
+end

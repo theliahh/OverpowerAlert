@@ -23,6 +23,9 @@ ns.ABILITIES = {
         text = L.REVENGE_ALERT_TEXT, color = { 1, 0.82, 0 },
         icon = "Interface\\Icons\\Ability_Warrior_Revenge",
         description = L.REVENGE_DESCRIPTION,
+        -- The only stance it can be cast in. There, it stopping being usable
+        -- means the opening is over.
+        castIn = "defensive",
         defaults = {
             sound = "cdm:353421", -- Sword Shing
             stances = { battle = false, defensive = true, berserker = false },
@@ -361,6 +364,7 @@ end
 
 local OPENING = 5.0   -- how long an ability stays available after a trigger, unless it says otherwise
 local EVENT_LAG = 0.2 -- a "usable" signal this soon after an opening ended belongs to it
+local USABLE_LEAD = 0.5 -- a trigger this soon after usability opened the opening is the same one
 
 local frame = CreateFrame("Frame")
 -- [abilityKey] = { spellID, wasUsable, activeUntil, alerted, consumedUntil }
@@ -368,7 +372,7 @@ local state = {}
 local ticker
 
 for _, ability in ipairs(ns.ABILITIES) do
-    state[ability.key] = { wasUsable = false, activeUntil = 0, alerted = false, consumedUntil = 0 }
+    state[ability.key] = { wasUsable = false, activeUntil = 0, alerted = false, consumedUntil = 0, usableOpenedAt = -math.huge }
 end
 
 local function IsKnown(id)
@@ -472,6 +476,14 @@ end
 local function OnTrigger(abilityKey, untilTime)
     local st = state[abilityKey]
     if not InOpening(abilityKey) then st.alerted = false end
+    -- The game makes Revenge usable a fraction of a second before UNIT_COMBAT
+    -- reports the block. If the opening was started then, this is the same
+    -- block arriving late: keep the earlier, accurate end time.
+    if not untilTime and InOpening(abilityKey) and GetTime() - st.usableOpenedAt <= USABLE_LEAD then
+        st.usableOpenedAt = -math.huge
+        MaybeAlert(abilityKey)
+        return
+    end
     st.activeUntil = untilTime or (GetTime() + ns.Duration(abilityKey))
     MaybeAlert(abilityKey)
 end
@@ -493,23 +505,37 @@ local function OnBecameUsable(abilityKey)
         if abilityKey == "victoryrush" and ReadVictorious() == false then return end
         st.alerted = false
         st.activeUntil = now + ns.Duration(abilityKey)
+        st.usableOpenedAt = now
     end
     MaybeAlert(abilityKey)
 end
 
 local CheckVictorious -- with the Victory Rush code below
+local lastStance -- the stance at the previous Check
 
 local function Check()
     CheckVictorious()
+    local stance = ns.CurrentStance()
     for _, ability in ipairs(ns.ABILITIES) do
         local key = ability.key
         local st = state[key]
         local usable = ns.IsUsable(key)
-        if usable and not st.wasUsable then OnBecameUsable(key) end
+        if usable and not st.wasUsable then
+            OnBecameUsable(key)
+        elseif not usable and st.wasUsable and ability.castIn
+            and stance == ability.castIn and lastStance == ability.castIn
+            and InOpening(key) then
+            -- It stopped being usable while the player stayed in the stance
+            -- it's cast in: the game closed the opening, which can be up to
+            -- a second before our timer (started from the late UNIT_COMBAT)
+            -- runs out.
+            EndOpening(key)
+        end
         st.wasUsable = usable
         -- Stance changes, cooldowns ending, settings changes.
         MaybeAlert(key)
     end
+    lastStance = stance
 end
 ns.Check = Check
 

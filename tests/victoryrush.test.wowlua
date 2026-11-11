@@ -1,0 +1,86 @@
+-- Victory Rush: the Victorious buff (402975) opens it. In combat the game
+-- hides the buff from addons, so Victory Rush turning usable is the signal.
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior", timeout = 60 })
+
+local VICTORY_RUSH, VICTORIOUS = 402927, 402975
+local buffUntil = 0
+
+@beforeEach
+local function setup()
+    buffUntil = 0
+    mock.fake("GetShapeshiftForm", function() return 1 end)
+    mock.fake("GetShapeshiftFormInfo", function() return nil, nil, nil, 2457 end)
+    mock.stub(C_UnitAuras, "GetPlayerAuraBySpellID", function(id)
+        if id ~= VICTORIOUS or GetTime() >= buffUntil then return nil end
+        if InCombatLockdown() then return nil end -- hidden in combat, as seen in game
+        return mock.partial({ spellId = VICTORIOUS, expirationTime = buffUntil, duration = 20 })
+    end)
+    mock.stub(C_Spell, "IsSpellUsable", function(id)
+        if id == VICTORY_RUSH then return GetTime() < buffUntil, false end
+        return false, false
+    end)
+end
+
+@afterEach
+local function settle()
+    if buffUntil > GetTime() then mock.player:removeAura(VICTORIOUS) end
+    buffUntil = 0
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitSeconds(21)
+    if InCombatLockdown() then mock.player:leaveCombat() end
+    mock.waitFrames(2)
+end
+
+local function icon()
+    return _G["OverpowerAlertVictory RushIconFrame"] -- named after the ability, space and all
+end
+
+local function kill()
+    buffUntil = GetTime() + 20
+    -- The emulator tells UNIT_AURA as the client does; the stub above decides
+    -- what the addon can read of it.
+    mock.player:applyAura({ spellId = VICTORIOUS, name = "Victorious", duration = 20 })
+    mock.fireEvent("SPELL_UPDATE_USABLE") -- the game tells usability changes
+    mock.waitFrames(2)
+end
+
+@test("a kill out of combat shows the icon")
+local function outOfCombat()
+    kill()
+    expect(icon()).toBeShown()
+    mock.waitSeconds(10)
+    expect(icon()).toBeShown()
+    mock.waitSeconds(11)
+    expect(icon()).never.toBeShown()
+end
+
+@test("a kill in combat shows it straight away, not when combat ends")
+local function inCombat()
+    mock.player:enterCombat()
+    kill()
+    mock.waitSeconds(0.3)
+    expect(icon()).toBeShown()
+end
+
+@test("pulling another mob doesn't hide it")
+local function pullNext()
+    kill()
+    mock.player:enterCombat()
+    mock.waitSeconds(3)
+    expect(icon()).toBeShown()
+end
+
+@test("casting it hides it")
+local function cast()
+    mock.player:enterCombat()
+    kill()
+    mock.waitSeconds(0.3)
+    buffUntil = 0
+    mock.player:removeAura(VICTORIOUS)
+    mock.fireUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", VICTORY_RUSH)
+    mock.waitSeconds(0.5)
+    expect(icon()).never.toBeShown()
+end

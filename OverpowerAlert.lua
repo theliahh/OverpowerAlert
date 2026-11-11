@@ -770,6 +770,8 @@ SlashCmdList.OVERPOWERALERT = function(msg)
         ns.SetUnlocked(abilityKey, nil, false)
     elseif cmd == "probe" then -- TEMPORARY, see the probe below
         ns.ToggleProbe()
+    elseif cmd == "glowprobe" then -- TEMPORARY, see the glow probe below
+        ns.ToggleGlowProbe()
     elseif ns.OpenOptions then
         ns.OpenOptions()
     end
@@ -897,5 +899,127 @@ do
             Poll()
         end)
         print("|cffff6619OPA|r probe on (/opa probe again to stop). " .. Combo())
+    end
+end
+
+--------------------------------------------------------------------------------
+-- TEMPORARY probe (/opa glowprobe): whether the game raises Blizzard's proc
+-- glow (spell activation overlay) for our abilities, which would mark every
+-- new opening even while the spell stays usable. Logs, next to each other:
+--   GLOW+ / GLOW-   SPELL_ACTIVATION_OVERLAY_GLOW_SHOW / _HIDE (any spell)
+--   OVERLAY         IsSpellOverlayed for each ability, when it changes
+--   HIT             your own blocks / dodges / parries / partial blocks
+--   USABLE / CD     each ability's usability and cooldown, when they change
+--   CAST / ALERT    casting one of them, and this addon alerting
+-- Remove once answered.
+--------------------------------------------------------------------------------
+
+do
+    local probe, t0
+    local last = {}
+
+    local function Show(v)
+        if issecretvalue and issecretvalue(v) then return "<secret>" end
+        return tostring(v)
+    end
+
+    local function Out(text)
+        print(string.format("|cff33ccffOPA glow|r %.2f %s", GetTime() - t0, text))
+    end
+
+    local function SpellLabel(id)
+        if issecretvalue and issecretvalue(id) then return "<secret>" end
+        local owner
+        for _, ability in ipairs(ns.ABILITIES) do
+            for _, aid in ipairs(ability.ids) do
+                if aid == id then owner = ability.name end
+            end
+        end
+        local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)
+        return string.format("%s (%s)%s", tostring(id), Show(name), owner and (" = " .. owner) or "")
+    end
+
+    local function Changed(key, value, text)
+        if last[key] ~= value then
+            last[key] = value
+            Out(text)
+        end
+    end
+
+    local function Poll()
+        local ISO = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed
+            or IsSpellOverlayed
+        for _, ability in ipairs(ns.ABILITIES) do
+            local id = ns.GetSpellID(ability.key)
+            if id then
+                local name = ability.name
+                if ISO then
+                    local ok, lit = pcall(ISO, id)
+                    local v = ok and Show(lit) or "err"
+                    Changed(name .. "overlay", v, string.format("OVERLAY %s = %s", name, v))
+                end
+                local ok, usable, noPower = pcall(C_Spell.IsSpellUsable, id)
+                local u = ok and (Show(usable) .. "/" .. Show(noPower)) or "err"
+                Changed(name .. "usable", u, string.format("USABLE %s = %s", name, u))
+                local cd = ns.OnCooldown(ability.key) and "on cooldown" or "ready"
+                Changed(name .. "cd", cd, string.format("CD %s %s", name, cd))
+            end
+        end
+    end
+
+    local function OnEvent(_, event, ...)
+        if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
+            local spellID = ...
+            Out((event:sub(-4) == "SHOW" and "GLOW+ " or "GLOW- ") .. SpellLabel(spellID))
+        elseif event == "UNIT_COMBAT" then
+            local _, action, flagText = ...
+            local a, f = Show(action), Show(flagText)
+            if a == "BLOCK" or a == "DODGE" or a == "PARRY" or a == "<secret>"
+                or f == "BLOCK" or f == "BLOCK_REDUCED" or f == "<secret>" then
+                Out(string.format("HIT you %s flag=%s", a, f))
+            end
+        elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+            local _, _, spellID = ...
+            local label = SpellLabel(spellID)
+            if label:find(" = ") then Out("CAST " .. label) end
+        end
+        Poll()
+    end
+
+    -- Log the addon's own alerts too, to line them up with the glow.
+    local realAlert
+    local function LoggedAlert(abilityKey)
+        if probe then Out("ALERT " .. ns.ABILITY_BY_KEY[abilityKey].name) end
+        return realAlert(abilityKey)
+    end
+
+    function ns.ToggleGlowProbe()
+        if probe then
+            probe:UnregisterAllEvents()
+            probe:SetScript("OnUpdate", nil)
+            probe = nil
+            if ns.PreviewAlert == LoggedAlert then ns.PreviewAlert = realAlert end
+            print("|cff33ccffOPA glow|r probe off")
+            return
+        end
+        t0 = GetTime()
+        wipe(last)
+        probe = CreateFrame("Frame")
+        probe:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
+        probe:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
+        pcall(probe.RegisterUnitEvent, probe, "UNIT_COMBAT", "player")
+        pcall(probe.RegisterUnitEvent, probe, "UNIT_SPELLCAST_SUCCEEDED", "player")
+        probe:SetScript("OnEvent", OnEvent)
+        local elapsed = 0
+        probe:SetScript("OnUpdate", function(_, dt)
+            elapsed = elapsed + dt
+            if elapsed < 0.1 then return end
+            elapsed = 0
+            Poll()
+        end)
+        realAlert = ns.PreviewAlert
+        ns.PreviewAlert = LoggedAlert
+        print("|cff33ccffOPA glow|r probe on (/opa glowprobe again to stop)")
+        Poll()
     end
 end

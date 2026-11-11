@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DomenikIrrgang/wowlua/main/schema/wowlua-0.1.json",
+  "package": {
+    "name": "overpower-alert",
+    "version": "0.1.0",
+    "wowlua": "^0.13"
+  },
+  "addon": {
+    "title": "Overpower Alert",
+    "saved-variables": [
+      "OverpowerAlertDB"
+    ]
+  },
+  "flavors": {
+    "camelot": {}
+  },
+  "build": {
+    "src": ".",
+    "exclude": [
+      "docs/**",
+      ".github/**",
+      "dist/**"
+    ],
+    "load-order": [
+      "Libs/LibStub/LibStub.lua",
+      "Libs/CallbackHandler-1.0/CallbackHandler-1.0.xml",
+      "Libs/LibSharedMedia-3.0/lib.xml",
+      "Libs/LibCustomGlow-1.0/LibCustomGlow-1.0.lua",
+      "Strings.lua",
+      "OverpowerAlert.lua",
+      "Display.lua",
+      "ActionBars.lua",
+      "Options.lua"
+    ]
+  },
+  "test": {
+    "blizzard-ui": true
+  }
+}

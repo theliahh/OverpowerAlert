@@ -1,0 +1,92 @@
+-- Revenge: blocks, dodges and parries open it, partial blocks included, and
+-- a new opening after a cast alerts once the cooldown is over.
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local REVENGE = 25288 -- the rank the warrior profile knows
+local STANCES = { 2457, 71, 2458 } -- Battle, Defensive, Berserker
+local stance = 2
+local cooldownUntil = 0
+
+@beforeEach
+local function setup()
+    stance = 2
+    cooldownUntil = 0
+    mock.fake("GetShapeshiftForm", function() return stance end)
+    mock.fake("GetShapeshiftFormInfo", function(i) return nil, nil, nil, STANCES[i] end)
+    mock.stub(C_Spell, "GetSpellCooldown", function()
+        local active = GetTime() < cooldownUntil
+        return { startTime = active and cooldownUntil - 5 or 0, duration = active and 5 or 0,
+                 isEnabled = true, isActive = active, modRate = 1, isOnGCD = false }
+    end)
+    mock.player:enterCombat()
+end
+
+@afterEach
+local function settle()
+    -- Let any opening run out so the next test starts clean.
+    mock.waitSeconds(6)
+    mock.player:leaveCombat()
+end
+
+local function icon()
+    return _G["OverpowerAlertRevengeIconFrame"]
+end
+
+local function hit(action, flag)
+    mock.fireUnitEvent("UNIT_COMBAT", "player", action, flag, 100, 1)
+    mock.waitFrames(2)
+end
+
+local function castRevenge()
+    mock.fireUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", REVENGE)
+    cooldownUntil = GetTime() + 5
+    mock.waitFrames(2)
+end
+
+@test("a partial block opens Revenge")
+local function partialBlock()
+    hit("WOUND", "BLOCK_REDUCED")
+    expect(icon()).toBeShown()
+end
+
+@test("a plain hit doesn't")
+local function plainHit()
+    hit("WOUND", "")
+    expect(icon()).never.toBeShown()
+end
+
+@test("dodge, parry and a full block open it")
+local function avoidances()
+    for _, action in ipairs({ "DODGE", "PARRY", "BLOCK" }) do
+        hit(action, "")
+        expect(icon()).toBeShown()
+        castRevenge()
+        mock.waitSeconds(6)
+    end
+end
+
+@test("after a cast, a block during the cooldown alerts when it's over")
+local function afterCast()
+    hit("WOUND", "BLOCK_REDUCED")
+    castRevenge()
+    mock.waitSeconds(1)
+    expect(icon()).never.toBeShown()
+    hit("WOUND", "BLOCK_REDUCED")
+    mock.waitSeconds(2)
+    expect(icon()).never.toBeShown() -- still on cooldown
+    mock.waitSeconds(2.5)
+    expect(icon()).toBeShown()        -- cooldown over, opening still up
+end
+
+@test("not in an unticked stance")
+local function wrongStance()
+    stance = 1 -- Battle Stance; Revenge only alerts in Defensive by default
+    hit("WOUND", "BLOCK_REDUCED")
+    expect(icon()).never.toBeShown()
+    stance = 2
+    mock.waitSeconds(0.3)
+    expect(icon()).toBeShown()
+end

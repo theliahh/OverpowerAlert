@@ -5,3 +5,7 @@ enable-nolib-creation: no
 ignore:
   - README.md
   - docs
+  - tests
+  - wowlua.json
+  - wowlua.lock
+  - dist

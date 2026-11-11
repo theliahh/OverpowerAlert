@@ -1,0 +1,53 @@
+-- "Alert even while on cooldown": off, an opening waits for the cooldown;
+-- on, it alerts straight away.
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local cooldownUntil = 0
+
+@beforeEach
+local function setup()
+    mock.fake("GetShapeshiftForm", function() return 2 end)
+    mock.fake("GetShapeshiftFormInfo", function() return nil, nil, nil, 71 end)
+    mock.stub(C_Spell, "GetSpellCooldown", function()
+        local active = GetTime() < cooldownUntil
+        return { startTime = active and cooldownUntil - 5 or 0, duration = active and 5 or 0,
+                 isEnabled = true, isActive = active, modRate = 1, isOnGCD = false }
+    end)
+    mock.player:enterCombat()
+end
+
+@afterEach
+local function settle()
+    OverpowerAlertDB.revenge.showOnCooldown = false
+    mock.waitSeconds(6)
+    mock.player:leaveCombat()
+end
+
+local function icon()
+    return _G["OverpowerAlertRevengeIconFrame"]
+end
+
+local function block()
+    mock.fireUnitEvent("UNIT_COMBAT", "player", "BLOCK", "", 0, 1)
+    mock.waitFrames(2)
+end
+
+@test("off: waits for the cooldown")
+local function off()
+    cooldownUntil = GetTime() + 3
+    block()
+    expect(icon()).never.toBeShown()
+    mock.waitSeconds(3.2)
+    expect(icon()).toBeShown()
+end
+
+@test("on: alerts straight away")
+local function on()
+    OverpowerAlertDB.revenge.showOnCooldown = true
+    cooldownUntil = GetTime() + 3
+    block()
+    expect(icon()).toBeShown()
+end

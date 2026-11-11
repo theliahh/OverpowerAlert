@@ -79,3 +79,16 @@ It picks up whichever rank you've learned.
 ## Credits
 
 The addon bundles [LibStub](https://www.wowace.com/projects/libstub), [CallbackHandler-1.0](https://www.wowace.com/projects/callbackhandler), [LibSharedMedia-3.0](https://www.curseforge.com/wow/addons/libsharedmedia-3-0) and [LibCustomGlow-1.0](https://github.com/Stanzilla/LibCustomGlow), which keep their own licenses.
+
+## Tests
+
+The tests in [tests/](tests/) run the addon in [wowlua](https://wowlua.dev/)'s emulated WoW Forever client, with Blizzard's UI loaded, so no game client is needed:
+
+```
+wowlua test
+```
+
+- `wowlua.json` describes the addon for wowlua without moving any files. Its `load-order` must match `OverpowerAlert.toc`.
+- `tests/profiles/warrior.json` is the character the tests start as.
+- Stances, cooldowns, usability and the Victorious buff are stubbed in each test file, as the game behaves on Forever (see [docs/forever-client-research.md](docs/forever-client-research.md)).
+- None of this ships: `.pkgmeta` leaves out `tests`, `wowlua.json`, `wowlua.lock` and `dist`.

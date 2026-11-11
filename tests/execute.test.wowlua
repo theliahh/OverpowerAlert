@@ -1,0 +1,89 @@
+-- Execute: off by default; once on, up while the target is below 20% health,
+-- read from the game's own usability since target health is hidden (the
+-- emulator hides it too, so these run the real path).
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local EXECUTE = 20662 -- the rank the warrior profile knows
+local STANCES = { 2457, 71, 2458 } -- Battle, Defensive, Berserker
+local stance = 1
+local usable = false
+
+@beforeEach
+local function setup()
+    stance, usable = 1, false
+    mock.fake("GetShapeshiftForm", function() return stance end)
+    mock.fake("GetShapeshiftFormInfo", function(i) return nil, nil, nil, STANCES[i] end)
+    mock.stub(C_Spell, "IsSpellUsable", function(id)
+        if id == EXECUTE then return usable, false end
+        return false, false
+    end)
+    OverpowerAlertDB.execute.enabled = true
+    mock.player:enterCombat()
+end
+
+@afterEach
+local function settle()
+    usable = false
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitSeconds(2)
+    mock.player:leaveCombat()
+end
+
+local function icon()
+    return _G["OverpowerAlertExecuteIconFrame"]
+end
+
+local function setUsable(v)
+    usable = v
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitFrames(2)
+end
+
+@test("off by default, with no sound or text")
+local function defaults()
+    -- The profile's saved settings start from the defaults; check what they were.
+    expect(OverpowerAlertDB.execute.sound).toBe("NONE")
+    expect(OverpowerAlertDB.execute.showText).toBe(false)
+    OverpowerAlertDB.execute.enabled = false
+    setUsable(true)
+    expect(icon()).never.toBeShown()
+end
+
+@test("shows when Execute becomes usable, and stays up past 5 seconds")
+local function usableShows()
+    setUsable(true)
+    expect(icon()).toBeShown()
+    expect(_G["OverpowerAlertExecuteTextFrame"]).never.toBeShown()
+    mock.waitSeconds(8)
+    expect(icon()).toBeShown()
+end
+
+@test("casting it doesn't hide it")
+local function castKeeps()
+    setUsable(true)
+    mock.fireUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", EXECUTE)
+    mock.waitSeconds(2)
+    expect(icon()).toBeShown()
+end
+
+@test("hides when it stops being usable (target died or healed)")
+local function usableEnds()
+    setUsable(true)
+    mock.waitSeconds(1)
+    setUsable(false)
+    mock.waitSeconds(1.5)
+    expect(icon()).never.toBeShown()
+end
+
+@test("switching to Defensive Stance keeps it up")
+local function defensiveKeeps()
+    setUsable(true)
+    stance = 2
+    usable = false -- not castable in Defensive Stance
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(2)
+    expect(icon()).toBeShown()
+end

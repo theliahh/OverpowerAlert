@@ -35,7 +35,7 @@ ns.L = L
 --------------------------------------------------------------------------------
 
 L.ADDON_TITLE = "Overpower Alert"
-L.OPTIONS_SUBTITLE = "Plays an alert when Overpower, Revenge or Victory Rush becomes usable. Each has its own settings."
+L.OPTIONS_SUBTITLE = "Plays an alert when Overpower, Revenge, Victory Rush or Execute becomes usable. Each has its own settings."
 
 L.OVERPOWER = "Overpower"
 L.OVERPOWER_ALERT_TEXT = "OVERPOWER!"
@@ -48,6 +48,12 @@ L.REVENGE_DESCRIPTION = "Available for 5 seconds after you block, dodge or parry
 L.VICTORY_RUSH = "Victory Rush"
 L.VICTORY_RUSH_ALERT_TEXT = "VICTORY RUSH!"
 L.VICTORY_RUSH_DESCRIPTION = "Available for 20 seconds after you kill an enemy that gives experience or honor. Can be cast in any stance."
+
+L.EXECUTE = "Execute"
+L.EXECUTE_ALERT_TEXT = "EXECUTE!"
+L.EXECUTE_DESCRIPTION = "Available while your target is below 20% health. Can be cast in Battle and Berserker Stance.\n" ..
+    "The game hides your target's health from addons, so it's read from Execute becoming usable,\n" ..
+    "which only shows in those two stances."
 
 L.BATTLE_STANCE = "Battle Stance"
 L.DEFENSIVE_STANCE = "Defensive Stance"
@@ -158,7 +164,7 @@ L.BAR_HINT = "Works with Blizzard's bars, EllesmereUI, and LibActionButton bars 
 
 L.COUNTDOWN = "Countdown"
 L.SHOW_COUNTDOWN = "Show the seconds left in the opening (on the icon, or beside the text if the icon is off)"
-L.SLASH_HINT = "Slash commands: /opa (options), /opa test [overpower|revenge|victoryrush], /opa toggle [ability],\n" ..
+L.SLASH_HINT = "Slash commands: /opa (options), /opa test [overpower|revenge|victoryrush|execute], /opa toggle [ability],\n" ..
     "/opa unlock [ability], /opa lock [ability]. Without an ability, toggle/unlock/lock\n" ..
     "apply to all and test plays Overpower."
 
@@ -173,6 +179,6 @@ L.MOVE_ICON_HINT = "%s icon: drag to move, right-click to lock" -- %s: ability n
 -- Chat messages
 --------------------------------------------------------------------------------
 
-L.UNKNOWN_ABILITY = "unknown ability \"%s\" (use overpower, revenge or victoryrush)" -- %s: what was typed
+L.UNKNOWN_ABILITY = "unknown ability \"%s\" (use overpower, revenge, victoryrush or execute)" -- %s: what was typed
 L.ALERT_ENABLED = "%s alert enabled"           -- %s: ability name
 L.ALERT_DISABLED = "%s alert disabled"         -- %s: ability name

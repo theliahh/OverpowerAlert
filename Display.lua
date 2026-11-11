@@ -55,7 +55,7 @@ end
 
 local function CountdownWanted(el)
     local cfg = ns.Config(el.abilityKey)
-    if not cfg.showCountdown then return false end
+    if not cfg.showCountdown or ns.ABILITY_BY_KEY[el.abilityKey].untimed then return false end
     return el.kind == "icon" or not cfg.showIcon
 end
 

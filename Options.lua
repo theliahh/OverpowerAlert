@@ -110,6 +110,7 @@ local function BuildAbilityPage(content, ability)
     local menus = {}
 
     local desc = Label(content, ability.description, "GameFontHighlightSmall")
+    desc:SetJustifyH("LEFT")
     desc:SetPoint("TOPLEFT", 16, -8)
 
     local enabled = CreateCheckbox(content, L.ENABLE_ALERT:format(ability.name), abilityKey, "enabled", desc, -10)
@@ -136,15 +137,20 @@ local function BuildAbilityPage(content, ability)
     local stanceHint = Label(content, L.STANCE_HINT, "GameFontDisableSmall")
     stanceHint:SetPoint("TOPLEFT", stanceLabel, "BOTTOMLEFT", 0, -12)
 
-    local onCooldown = CreateCheckbox(content, L.SHOW_ON_COOLDOWN:format(ability.name),
-        abilityKey, "showOnCooldown", stanceHint, -8)
-    onCooldown:SetPoint("TOPLEFT", stanceHint, "BOTTOMLEFT", -4, -8)
+    -- Execute has no cooldown, so no "even while on cooldown" option.
+    local soundLabel = Label(content, L.ALERT_SOUND)
+    if ability.untimed then
+        soundLabel:SetPoint("TOPLEFT", stanceHint, "BOTTOMLEFT", 0, -16)
+    else
+        local onCooldown = CreateCheckbox(content, L.SHOW_ON_COOLDOWN:format(ability.name),
+            abilityKey, "showOnCooldown", stanceHint, -8)
+        onCooldown:SetPoint("TOPLEFT", stanceHint, "BOTTOMLEFT", -4, -8)
+        soundLabel:SetPoint("TOPLEFT", onCooldown, "BOTTOMLEFT", 4, -16)
+    end
 
     ---------------------------------------------------------------------------
     -- Sound
     ---------------------------------------------------------------------------
-    local soundLabel = Label(content, L.ALERT_SOUND)
-    soundLabel:SetPoint("TOPLEFT", onCooldown, "BOTTOMLEFT", 4, -16)
 
     local customBox
     local soundDD = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
@@ -161,6 +167,7 @@ local function BuildAbilityPage(content, ability)
     local function SetSound(key)
         cfg().sound = key
         customBox:SetShown(key == "CUSTOM")
+        customBox.Place()
         RefreshSoundText()
         ns.PlayAlertSound(abilityKey, key)
     end
@@ -224,9 +231,20 @@ local function BuildAbilityPage(content, ability)
     edit:SetScript("OnEnterPressed", function(self) self:ClearFocus(); ns.PlayAlertSound(abilityKey) end)
     edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
-    -- Channel
+    -- Channel: below the custom sound box when it's showing, otherwise right
+    -- under the hint, so the hidden box leaves no gap.
     local channelLabel = Label(content, L.SOUND_CHANNEL)
-    channelLabel:SetPoint("TOPLEFT", customBox, "BOTTOMLEFT", 0, -8)
+    local function PlaceChannel()
+        channelLabel:ClearAllPoints()
+        if customBox:IsShown() then
+            channelLabel:SetPoint("TOPLEFT", customBox, "BOTTOMLEFT", 0, -8)
+        else
+            channelLabel:SetPoint("TOPLEFT", smHint, "BOTTOMLEFT", 0, -16)
+        end
+    end
+    customBox.Place = PlaceChannel
+    customBox:SetShown(cfg().sound == "CUSTOM")
+    PlaceChannel()
 
     local channelDD = CreateRadioDropdown(content, 240,
         function() return CHANNELS end,
@@ -374,18 +392,24 @@ local function BuildAbilityPage(content, ability)
     ---------------------------------------------------------------------------
     -- Countdown
     ---------------------------------------------------------------------------
-    local countdownHeader = Label(content, L.COUNTDOWN, "GameFontNormalLarge")
-    countdownHeader:SetPoint("TOPLEFT", barHint, "BOTTOMLEFT", 0, -24)
-
-    local countdown = CreateCheckbox(content, L.SHOW_COUNTDOWN, abilityKey, "showCountdown", countdownHeader, -6)
-    countdown:SetPoint("TOPLEFT", countdownHeader, "BOTTOMLEFT", -4, -6)
-
+    -- Execute has no set length, so nothing to count down.
     local slashHint = Label(content, L.SLASH_HINT, "GameFontDisableSmall")
     slashHint:SetJustifyH("LEFT")
-    slashHint:SetPoint("TOPLEFT", countdown, "BOTTOMLEFT", 4, -20)
+    if ability.untimed then
+        slashHint:SetPoint("TOPLEFT", barHint, "BOTTOMLEFT", 0, -24)
+    else
+        local countdownHeader = Label(content, L.COUNTDOWN, "GameFontNormalLarge")
+        countdownHeader:SetPoint("TOPLEFT", barHint, "BOTTOMLEFT", 0, -24)
+
+        local countdown = CreateCheckbox(content, L.SHOW_COUNTDOWN, abilityKey, "showCountdown", countdownHeader, -6)
+        countdown:SetPoint("TOPLEFT", countdownHeader, "BOTTOMLEFT", -4, -6)
+
+        slashHint:SetPoint("TOPLEFT", countdown, "BOTTOMLEFT", 4, -20)
+    end
 
     return function()
         customBox:SetShown(cfg().sound == "CUSTOM")
+        customBox.Place()
         for _, dd in ipairs(menus) do dd:GenerateMenu() end
         RefreshSoundText()
     end

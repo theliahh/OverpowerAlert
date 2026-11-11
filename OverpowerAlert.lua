@@ -25,9 +25,11 @@ ns.ABILITIES = {
         description = L.REVENGE_DESCRIPTION,
         -- The only stance it can be cast in. There, it stopping being usable
         -- means the opening is over.
-        castIn = "defensive",
+        castIn = { defensive = true },
         defaults = {
-            sound = "cdm:353421", -- Sword Shing
+            -- None: its old default (Sword Shing) never played on Forever, so
+            -- players are used to it being silent.
+            sound = "NONE",
             stances = { battle = false, defensive = true, berserker = false },
             textY = 240, iconX = 80, iconY = 100,
         },
@@ -49,6 +51,25 @@ ns.ABILITIES = {
             textY = 300, iconX = 160, iconY = 100,
         },
     },
+    {
+        key = "execute", name = L.EXECUTE,
+        ids = { 20662, 20661, 20660, 20658, 5308 },
+        -- Up for as long as the target is below 20% health, not for a set
+        -- time: no countdown, and casting it doesn't end it.
+        untimed = true,
+        castIn = { battle = true, berserker = true },
+        text = L.EXECUTE_ALERT_TEXT, color = { 1, 0.15, 0.15 },
+        icon = "Interface\\Icons\\INV_Sword_48",
+        description = L.EXECUTE_DESCRIPTION,
+        defaults = {
+            -- Off until the player turns it on, and then just the icon.
+            enabled = false,
+            sound = "NONE",
+            showText = false,
+            stances = { battle = true, defensive = false, berserker = true },
+            textY = 360, iconX = 240, iconY = 100,
+        },
+    },
 }
 ns.ABILITY_BY_KEY = {}
 for _, ability in ipairs(ns.ABILITIES) do ns.ABILITY_BY_KEY[ability.key] = ability end
@@ -65,7 +86,7 @@ local function Defaults(ability)
     local stances = {}
     for k, v in pairs(ability.defaults.stances) do stances[k] = v end
     return {
-        enabled = true,
+        enabled = ability.defaults.enabled ~= false,
         sound = ability.defaults.sound,
         customSound = "",
         channel = "Master",
@@ -99,7 +120,9 @@ ns.LSM = LSM
 
 -- The sound alert list from Blizzard's Cooldown Manager
 -- (Blizzard_CooldownViewer/CooldownViewerSoundAlertData.lua), in the same
--- categories and order. Entries are { soundKitID, name }.
+-- categories and order. Entries are { soundKitID, name }. Its "Short"
+-- category is left out: none of those sounds play on Forever, not even in
+-- Blizzard's own menu. A saved pick from it falls back to the default.
 ns.CDM_SOUNDS = {
     { "Animals", {
         { 316401, "Cat" },
@@ -151,34 +174,6 @@ ns.CDM_SOUNDS = {
         { 316476, "Synth Buzz" },
         { 316460, "Synth High" },
         { 316723, "Warhorn" },
-    } },
-    { "Short", {
-        { 353392, "Bell Strike" },
-        { 353387, "Bell Tree" },
-        { 353388, "Big Pot" },
-        { 353389, "Blades" },
-        { 353424, "Coffee Mug" },
-        { 353393, "Cow Bell" },
-        { 353395, "Finger Snap" },
-        { 353404, "Guitar" },
-        { 353405, "Kalimba" },
-        { 353406, "Metal Blade Drop" },
-        { 353407, "Metal Blade On Rod" },
-        { 353408, "Metal Impact" },
-        { 353410, "Mini Wood Xylophone" },
-        { 353425, "Paper Cup" },
-        { 353417, "Sheet Metal" },
-        { 353419, "Stove Pipe" },
-        { 353420, "Stove Pipe Blade" },
-        { 353421, "Sword Shing" },
-        { 353402, "Synth Bleep" },
-        { 353400, "Synth Blurp" },
-        { 353397, "Synth Error" },
-        { 353399, "Synth High" },
-        { 353423, "Triangle" },
-        { 353426, "Water Drop" },
-        { 353427, "Wine Bottle" },
-        { 353428, "Wood Xylophone" },
     } },
     { "Warcraft II", {
         { 316731, "Abstract Whoosh" },
@@ -510,20 +505,23 @@ local function OnBecameUsable(abilityKey)
     MaybeAlert(abilityKey)
 end
 
-local CheckVictorious -- with the Victory Rush code below
+local CheckVictorious, CheckExecute -- with the Victory Rush and Execute code below
 local lastStance -- the stance at the previous Check
 
 local function Check()
     CheckVictorious()
     local stance = ns.CurrentStance()
+    CheckExecute(stance)
     for _, ability in ipairs(ns.ABILITIES) do
         local key = ability.key
         local st = state[key]
         local usable = ns.IsUsable(key)
-        if usable and not st.wasUsable then
+        if ability.untimed then
+            -- Execute: CheckExecute keeps its opening.
+        elseif usable and not st.wasUsable then
             OnBecameUsable(key)
         elseif not usable and st.wasUsable and ability.castIn
-            and stance == ability.castIn and lastStance == ability.castIn
+            and ability.castIn[stance] and ability.castIn[lastStance or ""]
             and InOpening(key) then
             -- It stopped being usable while the player stayed in the stance
             -- it's cast in: the game closed the opening, which can be up to
@@ -632,6 +630,55 @@ function CheckVictorious()
     victorious = up
 end
 
+-- Execute: up while the target is below 20% health. The target's health is a
+-- secret value on this client (UnitHealth and UnitHealthPercent are marked
+-- SecretReturns), so the signal is the game's own usability: Execute is only
+-- usable on a target in range of it, and only in Battle or Berserker Stance.
+-- Health is used instead whenever it happens to be readable. In Defensive
+-- Stance with health hidden there's no way to tell, so the last answer stands
+-- until the target changes.
+local executeUp = false
+
+local function SafeUnit(fn, ...)
+    if not fn then return nil end
+    local ok, v = pcall(fn, ...)
+    if not ok or not Readable(v) then return nil end
+    return v
+end
+
+local function ReadExecuteRange(stance)
+    if not SafeUnit(UnitExists, "target") then return false end
+    if SafeUnit(UnitIsDeadOrGhost, "target") then return false end
+    if SafeUnit(UnitCanAttack, "player", "target") == false then return false end
+    local hp, max = SafeUnit(UnitHealth, "target"), SafeUnit(UnitHealthMax, "target")
+    if type(hp) == "number" and type(max) == "number" and max > 0 then
+        return hp / max < 0.2
+    end
+    if stance and ns.ABILITY_BY_KEY.execute.castIn[stance] then
+        return ns.IsUsable("execute")
+    end
+    return executeUp
+end
+
+function CheckExecute(stance)
+    if not state.execute.spellID then return end
+    local up = ReadExecuteRange(stance)
+    if up and not executeUp then
+        OnTrigger("execute", math.huge) -- lasts until it's seen to end
+    elseif not up and executeUp then
+        EndOpening("execute")
+    end
+    executeUp = up
+end
+
+-- A new target starts over: its health has nothing to do with the last one's.
+local function OnTargetChanged()
+    if executeUp then
+        executeUp = false
+        EndOpening("execute")
+    end
+end
+
 -- Casting the ability uses up its opening and hides its text and icon. The
 -- next real trigger starts a new opening; until this one would have run out,
 -- the ability turning usable again (stance switch) doesn't.
@@ -643,7 +690,8 @@ end
 local function OnSpellCast(spellID)
     if not Readable(spellID) then return end
     local key = spellOwner[spellID]
-    if not key then return end
+    -- Execute stays up while the target is low enough to cast it again.
+    if not key or ns.ABILITY_BY_KEY[key].untimed then return end
     EndOpening(key)
     -- Victory Rush's usability follows the buff, so after a short grace period
     -- it turning usable again means another kill.
@@ -713,6 +761,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(self.RegisterUnitEvent, self, "UNIT_POWER_UPDATE", "player")
         pcall(self.RegisterUnitEvent, self, "UNIT_SPELLCAST_SUCCEEDED", "player")
         pcall(self.RegisterUnitEvent, self, "UNIT_AURA", "player")
+        pcall(self.RegisterUnitEvent, self, "UNIT_HEALTH", "target")
         if InCombatLockdown() then StartTicker() end
         return
     end
@@ -741,6 +790,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if unit == "player" then OnSpellCast(spellID) end
     elseif event == "UNIT_AURA" then
         if ... == "player" then CheckVictorious() end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        OnTargetChanged()
+        Check()
     else
         Check()
     end
@@ -757,6 +809,7 @@ local ABILITY_ALIASES = {
     op = "overpower", overpower = "overpower",
     rev = "revenge", revenge = "revenge",
     vr = "victoryrush", victoryrush = "victoryrush", victory = "victoryrush",
+    ex = "execute", exe = "execute", execute = "execute",
 }
 
 local function Print(text)
@@ -1049,3 +1102,4 @@ do
         Poll()
     end
 end
+

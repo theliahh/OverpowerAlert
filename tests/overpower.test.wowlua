@@ -1,0 +1,155 @@
+-- Overpower on the nameplate: the icon stays with the mob that dodged when
+-- the player changes target, since Overpower only works on that mob.
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local first, second
+
+-- The hidden combo point that is the Overpower opening (the profile gives the
+-- warrior the power, as the game does).
+local function setCombo(v)
+    mock.player:setPower(v, { powerType = "COMBO_POINTS" })
+end
+
+@beforeEach
+local function setup()
+    mock.fake("GetShapeshiftForm", function() return 1 end)
+    mock.fake("GetShapeshiftFormInfo", function() return nil, nil, nil, 2457 end)
+    OverpowerAlertDB.overpower.iconOnNameplate = true
+    OverpowerAlertDB.overpower.nameplateFallback = true
+    first = mock.unitOf("target")
+    second = mock.spawnUnit({ name = "Redridge Mongrel", level = 58, reaction = "hostile", distance = 4 })
+    first:showNameplate()
+    second:showNameplate()
+    mock.player:enterCombat()
+end
+
+@afterEach
+local function settle()
+    setCombo(0)
+    mock.waitSeconds(2)
+    mock.player:target(first)
+    second:despawn()
+    OverpowerAlertDB.overpower.iconOnNameplate = false
+    mock.player:leaveCombat()
+end
+
+local function icon()
+    return _G["OverpowerAlertOverpowerIconFrame"]
+end
+
+local function plateOf(unit)
+    return C_NamePlate.GetNamePlateForUnit(unit:token())
+end
+
+-- The frame the icon is anchored to.
+local function anchor()
+    local _, relativeTo = icon():GetPoint(1)
+    return relativeTo
+end
+
+local function dodge()
+    setCombo(1)
+    mock.waitFrames(3)
+end
+
+@test("the icon sits on the dodging mob's nameplate")
+local function onDodger()
+    local plate = plateOf(first)
+    dodge()
+    expect(icon()).toBeShown()
+    expect(anchor() == plate).toBe(true)
+end
+
+@test("changing target leaves it on the mob that dodged")
+local function staysOnDodger()
+    local plate = plateOf(first)
+    dodge()
+    mock.player:target(second)
+    mock.waitFrames(3)
+    expect(icon()).toBeShown()
+    expect(anchor() == plate).toBe(true)
+    expect(anchor() == plateOf(second)).toBe(false)
+end
+
+@test("if that mob loses its nameplate, the icon goes to its normal position, not the new target")
+local function plateGone()
+    dodge()
+    mock.player:target(second)
+    first:hideNameplate()
+    mock.waitFrames(3)
+    expect(icon()).toBeShown()
+    expect(anchor() == plateOf(second)).toBe(false)
+    expect(anchor() == UIParent).toBe(true)
+end
+
+@test("and comes back when the mob's nameplate does")
+local function plateBack()
+    dodge()
+    mock.player:target(second)
+    first:hideNameplate()
+    mock.waitFrames(3)
+    first:showNameplate()
+    mock.waitFrames(3)
+    expect(anchor() == plateOf(first)).toBe(true)
+end
+
+@test("a new opening on another mob moves it there")
+local function nextOpening()
+    dodge()
+    setCombo(0)
+    mock.waitSeconds(2)
+    mock.player:target(second)
+    mock.waitFrames(2)
+    dodge()
+    expect(icon()).toBeShown()
+    expect(anchor() == plateOf(second)).toBe(true)
+end
+
+-- The game reports each dodge on the dodging mob's own nameplate unit.
+local function reportDodge(unit)
+    mock.fireUnitEvent("UNIT_COMBAT", unit:token(), "DODGE", "", 0, 1)
+end
+
+@test("a dodge by a mob that isn't the target (Rend on another mob) puts it on that mob")
+local function otherMobDodged()
+    -- As seen in game: the dodge is reported just before the combo point.
+    reportDodge(second)
+    mock.waitSeconds(0.02)
+    dodge()
+    expect(icon()).toBeShown()
+    expect(anchor() == plateOf(second)).toBe(true)
+end
+
+@test("the same when the dodge is reported after the combo point")
+local function otherMobDodgedLate()
+    dodge()
+    mock.waitSeconds(0.4)
+    reportDodge(second)
+    mock.waitFrames(3)
+    expect(anchor() == plateOf(second)).toBe(true)
+end
+
+@test("another mob's dodge (someone else's attack) doesn't take it from the target that dodged")
+local function targetPreferred()
+    local plate = plateOf(first)
+    reportDodge(first)
+    reportDodge(second)
+    dodge()
+    mock.waitSeconds(0.3)
+    reportDodge(second)
+    mock.waitFrames(3)
+    expect(anchor() == plate).toBe(true)
+end
+
+@test("a dodge long after the combo point doesn't move it")
+local function lateDodgeIgnored()
+    local plate = plateOf(first)
+    dodge()
+    mock.waitSeconds(2)
+    reportDodge(second)
+    mock.waitFrames(3)
+    expect(anchor() == plate).toBe(true)
+end

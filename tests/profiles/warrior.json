@@ -1,5 +1,6 @@
 {
-  "character": { "name": "Tester", "realm": "Realm", "class": "WARRIOR", "race": "Human", "level": 60 },
+  "character": { "name": "Tester", "realm": "Realm", "class": "WARRIOR", "race": "Human", "level": 60,
+                 "powers": { "COMBO_POINTS": { "current": 0, "max": 5 } } },
   "trained": [11585, 25288, 402927, 20662, 2457, 71, 2458],
   "units": [ { "name": "Redridge Basher", "level": 58, "reaction": "hostile", "distance": 3, "target": true } ]
 }

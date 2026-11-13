@@ -45,6 +45,7 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
 - **Icon on the nameplate** (off by default): attaches the icon to your target's nameplate instead of a fixed spot, so it moves with the target. Choose the side (above, below, left or right; above by default) and an X/Y offset in pixels from that side.
   - If both icons are on the nameplate, give Overpower and Revenge different offsets (for example X -36 and X 36) so they don't overlap when both are up.
   - It follows target changes, and nameplates appearing or disappearing.
+  - Overpower's icon goes on the mob that dodged, even if that isn't your target (for example Rend on another mob), and stays there if you change target, because Overpower only works on that mob. If that mob has no nameplate, the icon shows at its normal position (or hides, with the fallback off).
   - Enemy nameplates need to be turned on in the game.
   - If your target has no nameplate (nameplates off, out of range, off-screen), the icon shows at its normal position instead. Untick that fallback to hide it in that case.
   - For Revenge it's your *target's* nameplate, which may not be the enemy you blocked; the game doesn't tell addons who attacked you.

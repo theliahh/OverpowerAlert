@@ -222,10 +222,21 @@ end
 -- the X/Y offset (so two abilities on the same side can sit apart).
 local OPPOSITE = { TOP = "BOTTOM", BOTTOM = "TOP", LEFT = "RIGHT", RIGHT = "LEFT" }
 
-local function TargetNameplate()
-    if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
-    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, "target")
-    if not ok or type(plate) ~= "table" then return nil end
+-- The nameplate the icon belongs on: the target's, except that Overpower's
+-- stays with the mob that dodged when the player changes target, since
+-- Overpower only works on that mob.
+local function AbilityNameplate(abilityKey)
+    local plate
+    if abilityKey == "overpower" and ns.OverpowerNameplate then
+        plate = ns.OverpowerNameplate()
+        if plate == false then return nil end -- that mob has no nameplate now
+    end
+    if not plate then
+        if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
+        local ok, found = pcall(C_NamePlate.GetNamePlateForUnit, "target")
+        if not ok or type(found) ~= "table" then return nil end
+        plate = found
+    end
     -- Some nameplates (friendly ones in instances) can't be touched by addons.
     if plate.IsForbidden and plate:IsForbidden() then return nil end
     return plate
@@ -233,7 +244,7 @@ end
 
 local function PlaceIcon(el)
     local cfg = ns.Config(el.abilityKey)
-    local plate = cfg.iconOnNameplate and not el.unlocked and TargetNameplate() or nil
+    local plate = cfg.iconOnNameplate and not el.unlocked and AbilityNameplate(el.abilityKey) or nil
     local side = OPPOSITE[cfg.nameplateSide] and cfg.nameplateSide or "TOP"
     local x, y = tonumber(cfg.nameplateX) or 0, tonumber(cfg.nameplateY) or 0
     local mode

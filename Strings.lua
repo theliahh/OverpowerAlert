@@ -137,6 +137,8 @@ L.GLOW_AUTOCAST = "Autocast Shine"
 
 L.NAMEPLATE = "Nameplate"
 L.ICON_ON_NAMEPLATE = "Anchor icon to target's nameplate"
+L.OVERPOWER_NAMEPLATE_NOTE = "|cffffaa33Experimental:|r the icon goes on the mob that dodged, even if it isn't your target, and stays\n" ..
+    "there if you change target (Overpower only works on that mob). It may pick the wrong mob at times."
 L.SIDE = "Side"
 L.SIDE_TOP = "Above"
 L.SIDE_BOTTOM = "Below"

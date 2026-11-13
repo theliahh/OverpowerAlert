@@ -338,7 +338,15 @@ local function BuildAbilityPage(content, ability)
     onPlate:SetPoint("TOPLEFT", plateHeader, "BOTTOMLEFT", -4, -6)
 
     local sideLabel = Label(content, L.SIDE)
-    sideLabel:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -10)
+    if abilityKey == "overpower" then
+        -- Which mob the opening belongs to is worked out from dodge reports.
+        local dodgerNote = Label(content, L.OVERPOWER_NAMEPLATE_NOTE, "GameFontDisableSmall")
+        dodgerNote:SetJustifyH("LEFT")
+        dodgerNote:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -4)
+        sideLabel:SetPoint("TOPLEFT", dodgerNote, "BOTTOMLEFT", 0, -10)
+    else
+        sideLabel:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -10)
+    end
     local sideDD = CreateRadioDropdown(content, 160,
         function() return NAMEPLATE_SIDES end,
         function() return cfg().nameplateSide end,

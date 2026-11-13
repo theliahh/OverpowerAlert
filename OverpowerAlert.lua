@@ -552,6 +552,105 @@ function ReadComboPoints()
     return v
 end
 
+-- The mob the opening belongs to. The combo point stays up when the player
+-- changes target, but Overpower only works on the mob that dodged ("Invalid
+-- target" on any other; seen in game). The game doesn't say which mob that
+-- is, so it's worked out from the dodges it reports:
+--   * UNIT_COMBAT reports each dodge on the dodging mob's own nameplate unit,
+--     within a moment of the combo point (seen 0.02-0.06 s before it, and
+--     0.35-0.6 s after it). The mob needn't be the target: Rend on another
+--     mob, dodged, gave the point with that mob's nameplate reporting it.
+--   * Other players' dodged attacks are reported the same way, so when
+--     several mobs dodge around the same time, the target is preferred.
+--   * Until a dodge is matched, the target is the best guess.
+-- Its nameplate is remembered so the icon can stay on it, and its GUID (when
+-- readable) finds the nameplate again if it goes off screen and comes back.
+local dodger = { known = false, plate = nil, guid = nil }
+local DODGE_BEFORE, DODGE_AFTER = 0.5, 1.0 -- how far a dodge can be from its combo point
+local comboGainedAt = -math.huge
+local dodgerIsTarget = false -- matched to a dodge by the target: settled
+local recentDodges = {} -- { time, plate, guid, isTarget }, the last DODGE_BEFORE seconds
+
+local function PlateFor(unit)
+    if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+    if not ok or type(plate) ~= "table" then return nil end
+    return plate
+end
+
+local function UnitGUIDIfReadable(unit)
+    local ok, guid = pcall(UnitGUID, unit)
+    if not ok or not Readable(guid) or type(guid) ~= "string" then return nil end
+    return guid
+end
+
+local function ForgetDodger()
+    dodger.known, dodger.plate, dodger.guid = false, nil, nil
+    dodgerIsTarget = false
+    comboGainedAt = -math.huge
+end
+
+local function UseDodge(dodge)
+    dodger.known, dodger.plate, dodger.guid = true, dodge.plate, dodge.guid
+    dodgerIsTarget = dodge.isTarget
+end
+
+-- A combo point was gained: the dodger is the mob whose dodge was just
+-- reported, or the target until a dodge says otherwise.
+local function RememberDodger()
+    local now = GetTime()
+    ForgetDodger()
+    comboGainedAt = now
+    local ok, exists = pcall(UnitExists, "target")
+    if ok and Readable(exists) and exists then
+        dodger.known = true
+        dodger.plate = PlateFor("target")
+        dodger.guid = UnitGUIDIfReadable("target")
+    end
+    local match
+    for _, dodge in ipairs(recentDodges) do
+        if now - dodge.time <= DODGE_BEFORE and (not match or dodge.isTarget or not match.isTarget) then
+            match = dodge
+        end
+    end
+    if match then UseDodge(match) end
+end
+
+-- A mob dodged (any nameplate, or the target).
+local function OnMobDodge(unit)
+    local now = GetTime()
+    local isTarget = unit == "target"
+    if not isTarget then
+        local ok, same = pcall(UnitIsUnit, unit, "target")
+        isTarget = ok and Readable(same) and same == true
+    end
+    local dodge = { time = now, plate = PlateFor(unit), guid = UnitGUIDIfReadable(unit), isTarget = isTarget }
+    while recentDodges[1] and now - recentDodges[1].time > DODGE_BEFORE do table.remove(recentDodges, 1) end
+    recentDodges[#recentDodges + 1] = dodge
+    -- The dodge that goes with a combo point just gained.
+    if now - comboGainedAt <= DODGE_AFTER and not dodgerIsTarget then UseDodge(dodge) end
+end
+
+-- Nameplates are reused for other mobs, so drop ours when its mob loses it,
+-- and pick it up again if the mob gets a new one.
+local function OnNameplateRemoved(unit)
+    if dodger.plate and PlateFor(unit) == dodger.plate then dodger.plate = nil end
+end
+
+local function OnNameplateAdded(unit)
+    if dodger.known and dodger.guid and UnitGUIDIfReadable(unit) == dodger.guid then
+        dodger.plate = PlateFor(unit)
+    end
+end
+
+-- Where the Overpower icon belongs when it's on a nameplate: the dodging
+-- mob's nameplate; false if that mob has none right now; nil if we don't know
+-- which mob it was (then the target's nameplate is the best guess).
+function ns.OverpowerNameplate()
+    if not dodger.known then return nil end
+    return dodger.plate or false
+end
+
 local function OnComboPointsChanged()
     local v = ReadComboPoints()
     if v then
@@ -560,9 +659,12 @@ local function OnComboPointsChanged()
         local gained = v > comboPoints
         comboPoints = v
         if gained then
+            RememberDodger()
             OnTrigger("overpower")
         elseif v == 0 then
-            -- Used, expired or the target changed: the opening is over.
+            -- Used or expired: the opening is over. (Changing target doesn't
+            -- end it.)
+            ForgetDodger()
             EndOpening("overpower")
         end
         return
@@ -570,13 +672,19 @@ local function OnComboPointsChanged()
     comboPoints = 0
     local now = GetTime()
     lastHiddenComboChange = now
-    if now - lastTargetDodge <= PAIR_WINDOW then OnTrigger("overpower") end
+    if now - lastTargetDodge <= PAIR_WINDOW then
+        RememberDodger()
+        OnTrigger("overpower")
+    end
 end
 
 local function OnTargetDodge()
     local now = GetTime()
     lastTargetDodge = now
-    if now - lastHiddenComboChange <= PAIR_WINDOW then OnTrigger("overpower") end
+    if now - lastHiddenComboChange <= PAIR_WINDOW then
+        RememberDodger()
+        OnTrigger("overpower")
+    end
 end
 
 -- Revenge: the player's own blocks, dodges and parries.
@@ -757,11 +865,14 @@ frame:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
         self:RegisterEvent("PLAYER_REGEN_DISABLED")
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
-        pcall(self.RegisterUnitEvent, self, "UNIT_COMBAT", "player", "target")
+        -- Every unit: mobs' dodges are reported on their nameplate units.
+        self:RegisterEvent("UNIT_COMBAT")
         pcall(self.RegisterUnitEvent, self, "UNIT_POWER_UPDATE", "player")
         pcall(self.RegisterUnitEvent, self, "UNIT_SPELLCAST_SUCCEEDED", "player")
         pcall(self.RegisterUnitEvent, self, "UNIT_AURA", "player")
         pcall(self.RegisterUnitEvent, self, "UNIT_HEALTH", "target")
+        pcall(self.RegisterEvent, self, "NAME_PLATE_UNIT_ADDED")
+        pcall(self.RegisterEvent, self, "NAME_PLATE_UNIT_REMOVED")
         if InCombatLockdown() then StartTicker() end
         return
     end
@@ -776,11 +887,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
         Check()
     elseif event == "UNIT_COMBAT" then
         local unit, action, flagText = ...
-        if not Readable(action) then return end
+        if not (Readable(unit) and Readable(action)) then return end
         if unit == "player" then
             OnPlayerCombat(action, flagText)
-        elseif unit == "target" and action == "DODGE" then
-            OnTargetDodge()
+        elseif action == "DODGE" and type(unit) == "string" then
+            if unit == "target" or unit:find("^nameplate%d") then OnMobDodge(unit) end
+            if unit == "target" then OnTargetDodge() end
         end
     elseif event == "UNIT_POWER_UPDATE" then
         local unit, powerType = ...
@@ -790,6 +902,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if unit == "player" then OnSpellCast(spellID) end
     elseif event == "UNIT_AURA" then
         if ... == "player" then CheckVictorious() end
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        OnNameplateAdded(...)
+    elseif event == "NAME_PLATE_UNIT_REMOVED" then
+        OnNameplateRemoved(...)
     elseif event == "PLAYER_TARGET_CHANGED" then
         OnTargetChanged()
         Check()

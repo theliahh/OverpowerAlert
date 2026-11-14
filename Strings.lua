@@ -60,6 +60,19 @@ L.DEFENSIVE_STANCE = "Defensive Stance"
 L.BERSERKER_STANCE = "Berserker Stance"
 
 --------------------------------------------------------------------------------
+-- Options: General tab
+--------------------------------------------------------------------------------
+
+L.GENERAL = "General"
+L.GENERAL_DESCRIPTION = "Settings shared by every ability."
+L.FONT = "Font"
+L.FONT_DEFAULT = "Default (game font)"
+L.FONT_HINT = "Used for the on-screen text and the countdown numbers of every ability.\n" ..
+    "Lists every font registered through LibSharedMedia by other addons\n" ..
+    "(SharedMedia packs, ElvUI, WeakAuras, etc.). Install those to get more fonts."
+L.FONT_SAMPLE = "OVERPOWER!  4.2"
+
+--------------------------------------------------------------------------------
 -- Options: top of each ability's tab
 --------------------------------------------------------------------------------
 

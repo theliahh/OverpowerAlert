@@ -118,6 +118,41 @@ end
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 ns.LSM = LSM
 
+-- Settings shared by every ability (the General tab).
+function ns.General()
+    return OverpowerAlertDB.general
+end
+
+-- The font for the alert text and the countdown numbers: the game's standard
+-- font ("DEFAULT"), or one registered with LibSharedMedia, saved by name. A
+-- font whose addon is gone falls back to the standard one.
+local DEFAULT_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+
+function ns.GetFontPath()
+    local name = OverpowerAlertDB and OverpowerAlertDB.general and OverpowerAlertDB.general.font
+    if LSM and type(name) == "string" and name ~= "DEFAULT" then
+        local ok, path = pcall(LSM.Fetch, LSM, "font", name, true)
+        if ok and type(path) == "string" then return path end
+    end
+    return DEFAULT_FONT
+end
+
+-- Sets the chosen font on a font string, or the standard one if it won't load.
+function ns.SetFont(fontString, size, flags)
+    local ok, set = pcall(fontString.SetFont, fontString, ns.GetFontPath(), size, flags)
+    if not ok or set == false or not fontString:GetFont() then
+        fontString:SetFont(DEFAULT_FONT, size, flags)
+    end
+end
+
+-- Every font registered with LibSharedMedia, sorted by name.
+function ns.GetSharedMediaFonts()
+    local list = {}
+    if not LSM then return list end
+    for _, name in ipairs(LSM:List("font")) do list[#list + 1] = name end
+    return list
+end
+
 -- The sound alert list from Blizzard's Cooldown Manager
 -- (Blizzard_CooldownViewer/CooldownViewerSoundAlertData.lua), in the same
 -- categories and order. Entries are { soundKitID, name }. Its "Short"
@@ -301,6 +336,9 @@ local function LoadSettings()
         end
         db.overpower = old
     end
+
+    if type(db.general) ~= "table" then db.general = {} end
+    if type(db.general.font) ~= "string" then db.general.font = "DEFAULT" end
 
     for _, ability in ipairs(ns.ABILITIES) do
         local cfg = db[ability.key] or {}
@@ -857,6 +895,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
         local _, class = UnitClass("player")
         if class ~= "WARRIOR" then return end
         Refresh()
+        -- Fonts from addons that loaded after this one are available now.
+        if ns.ApplyFont then ns.ApplyFont() end
         self:RegisterEvent("SPELLS_CHANGED")
         self:RegisterEvent("SPELL_UPDATE_USABLE")
         self:RegisterEvent("SPELL_UPDATE_COOLDOWN")

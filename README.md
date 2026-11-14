@@ -27,7 +27,11 @@ You choose which stances each ability alerts in: Battle, Defensive and Berserker
 
 ## Options
 
-Open the options with `/opa`, or from **Game Menu → Options → AddOns → Overpower Alert**. There's a tab for each ability, and every setting below is set separately for each one.
+Open the options with `/opa`, or from **Game Menu → Options → AddOns → Overpower Alert**. The **General** tab holds settings shared by every ability:
+
+- **Font:** the font for the on-screen text and the countdown numbers. Pick the game's default font or any font shared through LibSharedMedia (a few come built in; SharedMedia packs, ElvUI and similar addons add more). A sample shows the choice. If the addon that provided a font is removed, the text goes back to the default font.
+
+There's also a tab for each ability, and every setting below is set separately for each one.
 
 - **Enable:** turn that ability's alert on or off.
 - **Alert in:** the stances to alert in (see above).

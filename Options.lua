@@ -424,7 +424,63 @@ local function BuildAbilityPage(content, ability)
 end
 
 --------------------------------------------------------------------------------
--- Panel with one tab per ability
+-- The General page: settings shared by every ability. Returns its refresher.
+--------------------------------------------------------------------------------
+
+local function BuildGeneralPage(content)
+    local desc = Label(content, L.GENERAL_DESCRIPTION, "GameFontHighlightSmall")
+    desc:SetJustifyH("LEFT")
+    desc:SetPoint("TOPLEFT", 16, -8)
+
+    local fontLabel = Label(content, L.FONT)
+    fontLabel:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -16)
+
+    local fontDD = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
+    fontDD:SetWidth(240)
+    fontDD:SetPoint("TOPLEFT", fontLabel, "BOTTOMLEFT", 0, -6)
+
+    -- A sample in the chosen font, as it shows on screen.
+    local sample = content:CreateFontString(nil, "OVERLAY")
+    sample:SetTextColor(1, 0.4, 0.1)
+    sample:SetWordWrap(false) -- one line, whatever the font's width
+
+    local function Refresh()
+        ns.SetFont(sample, 28, "THICKOUTLINE")
+        sample:SetText(L.FONT_SAMPLE)
+    end
+
+    local function IsFont(name) return ns.General().font == name end
+    local function SetFontChoice(name)
+        ns.General().font = name
+        ns.ApplyFont()
+        Refresh()
+    end
+
+    fontDD:SetupMenu(function(_, root)
+        -- The list can be long with font packs installed.
+        if root.SetScrollMode then root:SetScrollMode(MENU_MAX_HEIGHT) end
+        root:CreateRadio(L.FONT_DEFAULT, IsFont, SetFontChoice, "DEFAULT")
+        root:CreateDivider()
+        for _, name in ipairs(ns.GetSharedMediaFonts()) do
+            root:CreateRadio(name, IsFont, SetFontChoice, name)
+        end
+    end)
+
+    local hint = Label(content, L.FONT_HINT, "GameFontDisableSmall")
+    hint:SetJustifyH("LEFT")
+    hint:SetPoint("TOPLEFT", fontDD, "BOTTOMLEFT", 0, -6)
+
+    sample:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -16)
+    Refresh()
+
+    return function()
+        fontDD:GenerateMenu()
+        Refresh()
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Panel with a General tab, then one tab per ability
 --------------------------------------------------------------------------------
 
 local function CreateTab(parent, text)
@@ -456,7 +512,8 @@ function ns.CreateOptions()
     sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
 
     local pages, tabs, refreshers = {}, {}, {}
-    local selected = ns.ABILITIES[1].key
+    local GENERAL = "general"
+    local selected = GENERAL
 
     local function SelectTab(key)
         selected = key
@@ -472,8 +529,9 @@ function ns.CreateOptions()
     divider:SetHeight(1)
 
     local prevTab
-    for _, ability in ipairs(ns.ABILITIES) do
-        local tab = CreateTab(panel, ability.name)
+    -- Adds a tab and its scrolling page; returns the page's content frame.
+    local function AddTab(key, text, height)
+        local tab = CreateTab(panel, text)
         if prevTab then
             tab:SetPoint("LEFT", prevTab, "RIGHT", 4, 0)
         else
@@ -481,23 +539,27 @@ function ns.CreateOptions()
             divider:SetPoint("TOPLEFT", tab, "BOTTOMLEFT", -4, 0)
             divider:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
         end
-        tab:SetScript("OnClick", function() SelectTab(ability.key) end)
-        tabs[ability.key] = tab
+        tab:SetScript("OnClick", function() SelectTab(key) end)
+        tabs[key] = tab
         prevTab = tab
 
-        -- Each page scrolls, since it's taller than the settings window.
+        -- Each page scrolls, since it can be taller than the settings window.
         local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
         scroll:SetPoint("TOP", divider, "BOTTOM", 0, -4)
         scroll:SetPoint("LEFT", panel, "LEFT", 0, 0)
         scroll:SetPoint("BOTTOMRIGHT", -28, 4)
         local content = CreateFrame("Frame", nil, scroll)
-        content:SetSize(600, 1480)
+        content:SetSize(600, height)
         scroll:SetScrollChild(content)
         scroll:SetScript("OnSizeChanged", function(_, width) content:SetWidth(width) end)
         scroll:Hide()
-        pages[ability.key] = scroll
+        pages[key] = scroll
+        return content
+    end
 
-        refreshers[ability.key] = BuildAbilityPage(content, ability)
+    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 300))
+    for _, ability in ipairs(ns.ABILITIES) do
+        refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1480), ability)
     end
 
     panel:SetScript("OnShow", function() SelectTab(selected) end)

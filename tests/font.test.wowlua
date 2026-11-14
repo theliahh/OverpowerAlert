@@ -1,0 +1,52 @@
+-- The General tab's font: used by every ability's text and countdown, with a
+-- fallback to the game's font when the saved one isn't there any more.
+import test, afterEach, expect, config from "wowlua:test"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local function fontOf(fontString)
+    local path = fontString:GetFont()
+    return path
+end
+
+local function label(ability)
+    -- The alert text ("OVERPOWER!") among the text frame's regions.
+    local frame = _G["OverpowerAlert" .. ability .. "TextFrame"]
+    for _, region in ipairs({ frame:GetRegions() }) do
+        if region.GetText and region:GetText() and region:GetText():find("!") then return region end
+    end
+end
+
+local function setFont(name)
+    OverpowerAlertDB.general.font = name
+    ns.ApplyFont()
+end
+
+@afterEach
+local function reset()
+    setFont("DEFAULT")
+end
+
+@test("the default is the game's font")
+local function default()
+    expect(OverpowerAlertDB.general.font).toBe("DEFAULT")
+    expect(fontOf(label("Overpower"))).toBe(STANDARD_TEXT_FONT)
+end
+
+@test("a Shared Media font applies to every ability's text")
+local function sharedMedia()
+    local path = ns.LSM:Fetch("font", "Morpheus")
+    setFont("Morpheus")
+    expect(fontOf(label("Overpower"))).toBe(path)
+    expect(fontOf(label("Revenge"))).toBe(path)
+    expect(fontOf(label("Execute"))).toBe(path)
+    expect(path == STANDARD_TEXT_FONT).toBe(false)
+end
+
+@test("a font that's no longer installed falls back to the game's font")
+local function missing()
+    setFont("A Font Pack That Was Uninstalled")
+    expect(fontOf(label("Overpower"))).toBe(STANDARD_TEXT_FONT)
+end

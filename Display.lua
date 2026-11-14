@@ -11,7 +11,6 @@ local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
 -- ability's opening lasts (ns.IsActive). Previews with no opening just show
 -- for HOLD.
 local HOLD, FADE = 1.2, 0.15
-local FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 local KINDS = { "text", "icon" }
 
 ns.GLOW_STYLES = {
@@ -171,9 +170,17 @@ function ns.ApplyTextStyle(abilityKey)
     local el = Element(abilityKey, "text")
     if not el then return end
     local size = ns.Config(abilityKey).textSize or 36
-    el.label:SetFont(FONT, size, "THICKOUTLINE")
-    el.countdown:SetFont(FONT, size, "THICKOUTLINE")
+    ns.SetFont(el.label, size, "THICKOUTLINE")
+    ns.SetFont(el.countdown, size, "THICKOUTLINE")
     el.frame:SetSize(math.max(el.label:GetStringWidth(), size * 5) + 20, size + 16)
+end
+
+-- The font changed (General tab): restyle every text and icon.
+function ns.ApplyFont()
+    for _, ability in ipairs(ns.ABILITIES) do
+        ns.ApplyTextStyle(ability.key)
+        ns.ApplyIconStyle(ability.key)
+    end
 end
 
 function ns.ShowText(abilityKey)
@@ -322,7 +329,7 @@ function ns.ApplyIconStyle(abilityKey)
     local cfg = ns.Config(abilityKey)
     local size = cfg.iconSize or 64
     el.frame:SetSize(size, size)
-    el.countdown:SetFont(FONT, math.max(12, math.floor(size * 0.4)), "THICKOUTLINE")
+    ns.SetFont(el.countdown, math.max(12, math.floor(size * 0.4)), "THICKOUTLINE")
     -- Glows are sized when they start, so restart any that's showing.
     if el.frame:IsShown() and not el.coolingDown then StartGlow(el.body, cfg.iconGlow) else StopGlow(el.body) end
 end
@@ -344,13 +351,13 @@ function ns.InitDisplay()
         local label = textEl.frame:CreateFontString(nil, "OVERLAY")
         label:SetPoint("CENTER")
         label:SetTextColor(unpack(ability.color))
-        label:SetFont(FONT, 36, "THICKOUTLINE")
+        ns.SetFont(label, 36, "THICKOUTLINE")
         label:SetText(ability.text)
         textEl.label = label
         local textCountdown = textEl.frame:CreateFontString(nil, "OVERLAY")
         textCountdown:SetPoint("LEFT", label, "RIGHT", 10, 0)
         textCountdown:SetTextColor(1, 1, 1)
-        textCountdown:SetFont(FONT, 36, "THICKOUTLINE")
+        ns.SetFont(textCountdown, 36, "THICKOUTLINE")
         textCountdown:Hide()
         textEl.countdown = textCountdown
         ApplyPosition(textEl)
@@ -387,7 +394,7 @@ function ns.InitDisplay()
         local iconCountdown = countdownLayer:CreateFontString(nil, "OVERLAY")
         iconCountdown:SetPoint("CENTER")
         iconCountdown:SetTextColor(1, 1, 1)
-        iconCountdown:SetFont(FONT, 26, "THICKOUTLINE")
+        ns.SetFont(iconCountdown, 26, "THICKOUTLINE")
         iconCountdown:Hide()
         iconEl.countdown = iconCountdown
         iconEl.onShow = function()

@@ -31,6 +31,20 @@ local NAMEPLATE_SIDES = {
     { value = "RIGHT",  label = L.SIDE_RIGHT },
 }
 
+local ICON_LAYOUTS = {
+    { value = "separate", label = L.ICON_LAYOUT_SEPARATE },
+    { value = "group",    label = L.ICON_LAYOUT_GROUP },
+}
+
+local GROUP_GROWS = {
+    { value = "RIGHT",   label = L.GROW_RIGHT },
+    { value = "LEFT",    label = L.GROW_LEFT },
+    { value = "UP",      label = L.GROW_UP },
+    { value = "DOWN",    label = L.GROW_DOWN },
+    { value = "HCENTER", label = L.GROW_HCENTER },
+    { value = "VCENTER", label = L.GROW_VCENTER },
+}
+
 local MAX_OFFSET = 500
 
 local MENU_MAX_HEIGHT = 400
@@ -61,7 +75,8 @@ end
 
 -- A box for a whole number of pixels (negative allowed), saved on Enter or
 -- when it loses focus. Anything that isn't a number puts the saved value back.
-local function CreateNumberBox(parent, abilityKey, key)
+-- `onChange`, if given, runs after a new value is saved.
+local function CreateNumberBox(parent, abilityKey, key, onChange)
     local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
     box:SetSize(60, 22)
     box:SetAutoFocus(false)
@@ -71,6 +86,7 @@ local function CreateNumberBox(parent, abilityKey, key)
         local v = tonumber(self:GetText())
         if v then
             ns.Config(abilityKey)[key] = math.max(-MAX_OFFSET, math.min(MAX_OFFSET, math.floor(v + 0.5)))
+            if onChange then onChange() end
         end
         Load(self)
     end)
@@ -337,15 +353,18 @@ local function BuildAbilityPage(content, ability)
         abilityKey, "iconOnNameplate", plateHeader, -6)
     onPlate:SetPoint("TOPLEFT", plateHeader, "BOTTOMLEFT", -4, -6)
 
+    -- On the nameplate and at its normal position (or in the group) at once.
+    local both = CreateCheckbox(content, L.NAMEPLATE_BOTH, abilityKey, "nameplateBoth", onPlate, 0)
+
     local sideLabel = Label(content, L.SIDE)
     if abilityKey == "overpower" then
         -- Which mob the opening belongs to is worked out from dodge reports.
         local dodgerNote = Label(content, L.OVERPOWER_NAMEPLATE_NOTE, "GameFontDisableSmall")
         dodgerNote:SetJustifyH("LEFT")
-        dodgerNote:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -4)
+        dodgerNote:SetPoint("TOPLEFT", both, "BOTTOMLEFT", 4, -4)
         sideLabel:SetPoint("TOPLEFT", dodgerNote, "BOTTOMLEFT", 0, -10)
     else
-        sideLabel:SetPoint("TOPLEFT", onPlate, "BOTTOMLEFT", 4, -10)
+        sideLabel:SetPoint("TOPLEFT", both, "BOTTOMLEFT", 4, -10)
     end
     local sideDD = CreateRadioDropdown(content, 160,
         function() return NAMEPLATE_SIDES end,
@@ -473,8 +492,67 @@ local function BuildGeneralPage(content)
     sample:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -16)
     Refresh()
 
+    ---------------------------------------------------------------------------
+    -- Icon positions: separate, or grouped and growing from one spot
+    ---------------------------------------------------------------------------
+    local general = ns.General
+    local layoutLabel = Label(content, L.ICON_LAYOUT)
+    layoutLabel:SetPoint("TOPLEFT", sample, "BOTTOMLEFT", 0, -28)
+
+    local growDD, spacingBox, unlock, reset
+    local function RefreshGroupControls()
+        local grouped = general().iconLayout == "group"
+        growDD:SetEnabled(grouped)
+        spacingBox:SetEnabled(grouped)
+        unlock:SetEnabled(grouped)
+        reset:SetEnabled(grouped)
+    end
+
+    local layoutDD = CreateRadioDropdown(content, 320,
+        function() return ICON_LAYOUTS end,
+        function() return general().iconLayout end,
+        function(value)
+            ns.SetIconLayout(value)
+            RefreshGroupControls()
+        end)
+    layoutDD:SetPoint("TOPLEFT", layoutLabel, "BOTTOMLEFT", 0, -6)
+
+    local growLabel = Label(content, L.GROUP_GROW)
+    growLabel:SetPoint("TOPLEFT", layoutDD, "BOTTOMLEFT", 0, -12)
+    growDD = CreateRadioDropdown(content, 160,
+        function() return GROUP_GROWS end,
+        function() return general().groupGrow end,
+        function(value)
+            general().groupGrow = value
+            ns.LayoutGroup()
+        end)
+    growDD:SetPoint("TOPLEFT", growLabel, "BOTTOMLEFT", 0, -6)
+
+    local spacingLabel = Label(content, L.GROUP_SPACING)
+    spacingLabel:SetPoint("LEFT", growLabel, "LEFT", 180, 0)
+    spacingBox = CreateNumberBox(content, "general", "groupSpacing", ns.LayoutGroup)
+    spacingBox:SetPoint("TOPLEFT", spacingLabel, "BOTTOMLEFT", 6, -6)
+
+    unlock = CreateButton(content, L.UNLOCK_GROUP, 120)
+    unlock:SetPoint("TOPLEFT", growDD, "BOTTOMLEFT", 0, -12)
+    unlock:SetScript("OnClick", function()
+        ns.SetUnlocked(nil, "icon", not ns.IsUnlocked(nil, "icon"))
+    end)
+    unlockButtons["general/icon"] = { button = unlock, unlockText = L.UNLOCK_GROUP, lockText = L.LOCK_GROUP }
+
+    reset = CreateButton(content, L.RESET_POSITION, 120)
+    reset:SetPoint("LEFT", unlock, "RIGHT", 6, 0)
+    reset:SetScript("OnClick", function() ns.ResetPosition(nil, "icon") end)
+
+    local groupHint = Label(content, L.GROUP_HINT, "GameFontDisableSmall")
+    groupHint:SetJustifyH("LEFT")
+    groupHint:SetPoint("TOPLEFT", unlock, "BOTTOMLEFT", 0, -10)
+
     return function()
         fontDD:GenerateMenu()
+        layoutDD:GenerateMenu()
+        growDD:GenerateMenu()
+        RefreshGroupControls()
         Refresh()
     end
 end
@@ -557,9 +635,9 @@ function ns.CreateOptions()
         return content
     end
 
-    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 300))
+    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 520))
     for _, ability in ipairs(ns.ABILITIES) do
-        refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1480), ability)
+        refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1520), ability)
     end
 
     panel:SetScript("OnShow", function() SelectTab(selected) end)

@@ -72,6 +72,24 @@ L.FONT_HINT = "Used for the on-screen text and the countdown numbers of every ab
     "(SharedMedia packs, ElvUI, WeakAuras, etc.). Install those to get more fonts."
 L.FONT_SAMPLE = "OVERPOWER!  4.2"
 
+L.ICON_LAYOUT = "Icon positions"
+L.ICON_LAYOUT_SEPARATE = "Separate: each icon at its own spot"
+L.ICON_LAYOUT_GROUP = "Grouped: side by side from one spot"
+L.GROUP_GROW = "Grow direction"
+L.GROW_RIGHT = "Right"
+L.GROW_LEFT = "Left"
+L.GROW_UP = "Up"
+L.GROW_DOWN = "Down"
+L.GROW_HCENTER = "Centered (row)"
+L.GROW_VCENTER = "Centered (column)"
+L.GROUP_SPACING = "Spacing"
+L.UNLOCK_GROUP = "Unlock Icons"
+L.LOCK_GROUP = "Lock Icons"
+L.GROUP_HINT = "Grouped: the icons that are up sit next to each other. A new one goes on the end; they close up when one goes.\n" ..
+    "Unlock, then drag the highlighted box to move them all. Right-click it (or /opa lock) to lock.\n" ..
+    "Each ability's Unlock Icon and Reset Position buttons then move the group too.\n" ..
+    "Icons shown on a nameplate aren't part of the group. Sizes are still set per ability."
+
 --------------------------------------------------------------------------------
 -- Options: top of each ability's tab
 --------------------------------------------------------------------------------
@@ -161,6 +179,7 @@ L.X_OFFSET = "X offset"
 L.Y_OFFSET = "Y offset"
 L.OFFSET_HINT = "Pixels from the chosen side: X moves right (negative: left), Y moves up (negative: down).\n" ..
     "Give each ability different offsets so they don't overlap when more than one is up."
+L.NAMEPLATE_BOTH = "Also show the icon at its normal position (or in the icon group) at the same time"
 L.NAMEPLATE_FALLBACK = "If your target has no nameplate, show the icon at its normal position instead"
 
 --------------------------------------------------------------------------------
@@ -188,6 +207,7 @@ L.SLASH_HINT = "Slash commands: /opa (options), /opa test [overpower|revenge|vic
 --------------------------------------------------------------------------------
 
 L.MOVE_TEXT_HINT = "%s text: drag to move, right-click to lock" -- %s: ability name
+L.MOVE_GROUP_HINT = "Icons: drag to move, right-click to lock"
 L.MOVE_ICON_HINT = "%s icon: drag to move, right-click to lock" -- %s: ability name
 
 --------------------------------------------------------------------------------

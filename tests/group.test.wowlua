@@ -1,0 +1,264 @@
+-- Icon positions (General tab): separate spots per ability, or grouped and
+-- growing side by side from one spot.
+import test, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local function icon(ability)
+    return _G["OverpowerAlert" .. ability .. "IconFrame"]
+end
+
+local function anchor()
+    return _G["OverpowerAlertIconGroupFrame"]
+end
+
+-- Where a frame's centre is, relative to the group's spot.
+local function offset(frame)
+    local x, y = frame:GetCenter()
+    local ax, ay = anchor():GetCenter()
+    return math.floor(x - ax + 0.5), math.floor(y - ay + 0.5)
+end
+
+local function group(grow)
+    OverpowerAlertDB.general.groupGrow = grow
+    OverpowerAlertDB.general.groupSpacing = 6
+    ns.SetIconLayout("group")
+end
+
+@afterEach
+local function reset()
+    ns.SetUnlocked(nil, nil, false)
+    ns.SetIconLayout("separate")
+    OverpowerAlertDB.general.groupGrow = "RIGHT"
+    OverpowerAlertDB.general.groupPos = nil
+    OverpowerAlertDB.execute.enabled = false
+    mock.waitSeconds(2) -- let previews fade
+end
+
+@test("separate is the default: each icon at its own spot")
+local function separate()
+    expect(OverpowerAlertDB.general.iconLayout).toBe("separate")
+    ns.ShowIcon("overpower")
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    local _, relativeTo = icon("Revenge"):GetPoint(1)
+    expect(relativeTo == UIParent).toBe(true)
+    local ox = icon("Overpower"):GetCenter()
+    local rx = icon("Revenge"):GetCenter()
+    expect(math.floor(rx - ox + 0.5)).toBe(80) -- their default spots
+end
+
+@test("grouped: a lone icon sits on the spot, whichever ability it is")
+local function lone()
+    group("RIGHT")
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    local x, y = offset(icon("Revenge"))
+    expect(x).toBe(0)
+    expect(y).toBe(0)
+end
+
+@test("grouped: icons grow to the right in the order they came up")
+local function right()
+    group("RIGHT")
+    ns.ShowIcon("victoryrush")
+    mock.waitFrames(2)
+    expect(offset(icon("Victory Rush"))).toBe(0)
+    ns.ShowIcon("overpower")
+    mock.waitFrames(2)
+    -- The new icon goes beside the first; it doesn't push it along.
+    expect(offset(icon("Victory Rush"))).toBe(0)
+    expect(offset(icon("Overpower"))).toBe(70)     -- 64 wide + 6 apart
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    expect(offset(icon("Victory Rush"))).toBe(0)
+    expect(offset(icon("Overpower"))).toBe(70)
+    expect(offset(icon("Revenge"))).toBe(140)
+    -- Alerting again for one that's already up doesn't move it.
+    ns.ShowIcon("victoryrush")
+    mock.waitFrames(2)
+    expect(offset(icon("Victory Rush"))).toBe(0)
+    local _, y = offset(icon("Victory Rush"))
+    expect(y).toBe(0)
+end
+
+@test("grouped: left, up and down")
+local function directions()
+    group("LEFT")
+    ns.ShowIcon("overpower")
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    expect(offset(icon("Revenge"))).toBe(-70)
+    OverpowerAlertDB.general.groupGrow = "UP"
+    ns.LayoutGroup()
+    local x, y = offset(icon("Revenge"))
+    expect(x).toBe(0)
+    expect(y).toBe(70)
+    OverpowerAlertDB.general.groupGrow = "DOWN"
+    ns.LayoutGroup()
+    x, y = offset(icon("Revenge"))
+    expect(y).toBe(-70)
+end
+
+@test("grouped, centered: the row's middle is on the spot")
+local function centered()
+    group("HCENTER")
+    ns.ShowIcon("overpower")
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    expect(offset(icon("Overpower"))).toBe(-35)
+    expect(offset(icon("Revenge"))).toBe(35)
+end
+
+@test("grouped: the others close up when an icon goes")
+local function closesUp()
+    group("RIGHT")
+    ns.ShowIcon("overpower")
+    mock.waitSeconds(1)
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    expect(offset(icon("Revenge"))).toBe(70)
+    mock.waitSeconds(0.6) -- Overpower's preview is over; Revenge's isn't
+    expect(icon("Overpower")).never.toBeShown()
+    expect(icon("Revenge")).toBeShown()
+    expect(offset(icon("Revenge"))).toBe(0)
+end
+
+@test("grouped: different sizes keep the spacing")
+local function sizes()
+    group("RIGHT")
+    OverpowerAlertDB.revenge.iconSize = 100
+    ns.ApplyIconStyle("revenge")
+    ns.ShowIcon("overpower")
+    ns.ShowIcon("revenge")
+    ns.ShowIcon("victoryrush")
+    mock.waitFrames(2)
+    expect(offset(icon("Revenge"))).toBe(88)        -- 32 + 6 + 50
+    expect(offset(icon("Victory Rush"))).toBe(176)  -- 88 + 50 + 6 + 32
+    OverpowerAlertDB.revenge.iconSize = 64
+    ns.ApplyIconStyle("revenge")
+end
+
+@test("grouped: unlocking shows every enabled ability's icon, and locks as one")
+local function unlock()
+    group("RIGHT")
+    ns.SetUnlocked("revenge", "icon", true)
+    mock.waitFrames(2)
+    expect(ns.IsUnlocked("overpower", "icon")).toBe(true)
+    expect(icon("Overpower")).toBeShown()
+    expect(icon("Revenge")).toBeShown()
+    expect(icon("Victory Rush")).toBeShown()
+    expect(icon("Execute")).never.toBeShown() -- its alert is off
+    expect(offset(icon("Victory Rush"))).toBe(140)
+    ns.SetUnlocked("overpower", "icon", false)
+    mock.waitFrames(2)
+    expect(icon("Revenge")).never.toBeShown()
+    expect(ns.IsUnlocked("revenge", "icon")).toBe(false)
+end
+
+@test("grouped: moving the spot moves the icons, and reset puts it back")
+local function move()
+    group("RIGHT")
+    OverpowerAlertDB.general.groupPos = { "CENTER", "CENTER", -200, -50 }
+    ns.ResetPosition("overpower", "icon") -- clears it
+    expect(OverpowerAlertDB.general.groupPos).toBe(nil)
+    ns.ShowIcon("overpower")
+    mock.waitFrames(2)
+    local x, y = icon("Overpower"):GetCenter()
+    local ux, uy = UIParent:GetCenter()
+    expect(math.floor(x - ux + 0.5)).toBe(0)
+    expect(math.floor(y - uy + 0.5)).toBe(100)
+end
+
+@test("switching back to separate returns icons to their own spots")
+local function back()
+    group("RIGHT")
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    ns.SetIconLayout("separate")
+    mock.waitFrames(2)
+    local _, relativeTo = icon("Revenge"):GetPoint(1)
+    expect(relativeTo == UIParent).toBe(true)
+end
+
+-- "Also show the icon at its normal position (or in the icon group)": the
+-- icon itself stays put and a second copy of it goes on the nameplate.
+local function plateCopy(ability)
+    -- The copy is the icon frame's child that's anchored to a nameplate.
+    local plate = C_NamePlate.GetNamePlateForUnit("target")
+    for _, child in ipairs({ icon(ability):GetChildren() }) do
+        local _, relativeTo = child:GetPoint(1)
+        if relativeTo == plate and child:IsShown() then return child end
+    end
+end
+
+local function bothOn(value)
+    OverpowerAlertDB.revenge.iconOnNameplate = value
+    OverpowerAlertDB.revenge.nameplateBoth = value
+end
+
+@test("nameplate only: the icon is on the nameplate, not in the group")
+local function plateOnly()
+    mock.unitOf("target"):showNameplate()
+    group("RIGHT")
+    OverpowerAlertDB.revenge.iconOnNameplate = true
+    ns.ShowIcon("overpower")
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    local _, relativeTo = icon("Revenge"):GetPoint(1)
+    expect(relativeTo == C_NamePlate.GetNamePlateForUnit("target")).toBe(true)
+    expect(plateCopy("Revenge")).toBe(nil)
+    bothOn(false)
+end
+
+@test("both: the icon is in the group and a copy is on the nameplate")
+local function bothPlaces()
+    mock.unitOf("target"):showNameplate()
+    group("RIGHT")
+    bothOn(true)
+    ns.ShowIcon("overpower")
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    expect(offset(icon("Revenge"))).toBe(70) -- in the group, after Overpower
+    local copy = plateCopy("Revenge")
+    expect(copy ~= nil).toBe(true)
+    expect(copy:IsVisible()).toBe(true)
+    -- The copy goes when the icon does.
+    mock.waitSeconds(2)
+    expect(icon("Revenge")).never.toBeShown()
+    expect(copy:IsVisible()).toBe(false)
+    bothOn(false)
+end
+
+@test("both, separate positions: the icon stays at its own spot too")
+local function bothSeparate()
+    mock.unitOf("target"):showNameplate()
+    bothOn(true)
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    local _, relativeTo = icon("Revenge"):GetPoint(1)
+    expect(relativeTo == UIParent).toBe(true)
+    expect(plateCopy("Revenge") ~= nil).toBe(true)
+    bothOn(false)
+end
+
+@test("both, no nameplate: just the icon, no copy")
+local function bothNoPlate()
+    mock.unitOf("target"):hideNameplate()
+    group("RIGHT")
+    bothOn(true)
+    ns.ShowIcon("revenge")
+    mock.waitFrames(2)
+    expect(offset(icon("Revenge"))).toBe(0)
+    for _, child in ipairs({ icon("Revenge"):GetChildren() }) do
+        -- Everything showing is part of the icon itself.
+        if child:IsShown() then
+            local _, relativeTo = child:GetPoint(1)
+            expect(relativeTo == icon("Revenge")).toBe(true)
+        end
+    end
+    bothOn(false)
+end

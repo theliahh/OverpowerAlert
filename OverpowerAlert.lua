@@ -103,6 +103,7 @@ local function Defaults(ability)
         nameplateX = 0,            -- offset from that side of the nameplate, in pixels
         nameplateY = 8,
         nameplateFallback = true,  -- no nameplate: show at iconPos instead of hiding
+        nameplateBoth = false,     -- on the nameplate and at its normal position (or in the group) at once
         showCountdown = false,
         barGlow = false,           -- glow the ability's action bar buttons
         barGlowStyle = "proc",
@@ -117,6 +118,17 @@ end
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 ns.LSM = LSM
+
+-- Which way grouped icons grow from the group's spot: the step along x and y
+-- for each next icon. Centered ones spread out both ways from the spot.
+ns.GROUP_GROW = {
+    RIGHT   = { 1, 0 },
+    LEFT    = { -1, 0 },
+    UP      = { 0, 1 },
+    DOWN    = { 0, -1 },
+    HCENTER = { 1, 0, centered = true },
+    VCENTER = { 0, -1, centered = true },
+}
 
 -- Settings shared by every ability (the General tab).
 function ns.General()
@@ -339,6 +351,11 @@ local function LoadSettings()
 
     if type(db.general) ~= "table" then db.general = {} end
     if type(db.general.font) ~= "string" then db.general.font = "DEFAULT" end
+    -- Icons: "separate" (each ability's icon at its own spot) or "group" (all
+    -- of them side by side, growing from one spot).
+    if db.general.iconLayout ~= "group" then db.general.iconLayout = "separate" end
+    if not ns.GROUP_GROW[db.general.groupGrow] then db.general.groupGrow = "RIGHT" end
+    if type(db.general.groupSpacing) ~= "number" then db.general.groupSpacing = 6 end
 
     for _, ability in ipairs(ns.ABILITIES) do
         local cfg = db[ability.key] or {}

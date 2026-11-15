@@ -30,6 +30,11 @@ You choose which stances each ability alerts in: Battle, Defensive and Berserker
 Open the options with `/opa`, or from **Game Menu → Options → AddOns → Overpower Alert**. The **General** tab holds settings shared by every ability:
 
 - **Font:** the font for the on-screen text and the countdown numbers. Pick the game's default font or any font shared through LibSharedMedia (a few come built in; SharedMedia packs, ElvUI and similar addons add more). A sample shows the choice. If the addon that provided a font is removed, the text goes back to the default font.
+- **Icon positions:** where the spell icons go.
+  - **Separate** (the default): each ability's icon has its own spot, moved with that ability's **Unlock Icon** button.
+  - **Grouped:** the icons that are up sit side by side and grow from one spot, in the order they came up: a new icon goes on the end, and the ones already up stay where they are. When one goes, the others close up. Choose the **grow direction** (right, left, up, down, or centered as a row or column) and the **spacing** between icons in pixels.
+  - To move the group, click **Unlock Icons**: every enabled ability's icon shows in place, and you drag the highlighted box. Right-click it to lock. Each ability's **Unlock Icon** and **Reset Position** buttons move the group too while grouped.
+  - Icons shown on a nameplate aren't part of the group; they join it when they fall back to their normal position. Icon sizes are still set per ability. Your separate positions are kept if you switch back.
 
 There's also a tab for each ability, and every setting below is set separately for each one.
 
@@ -52,6 +57,7 @@ There's also a tab for each ability, and every setting below is set separately f
   - Overpower's icon goes on the mob that dodged, even if that isn't your target (for example Rend on another mob), and stays there if you change target, because Overpower only works on that mob. If that mob has no nameplate, the icon shows at its normal position (or hides, with the fallback off).
   - Enemy nameplates need to be turned on in the game.
   - If your target has no nameplate (nameplates off, out of range, off-screen), the icon shows at its normal position instead. Untick that fallback to hide it in that case.
+  - Tick **Also show the icon at its normal position (or in the icon group)** to have it in both places at once: one on the nameplate, and one at its usual spot or in the group. With no nameplate, just the usual one shows.
   - For Revenge it's your *target's* nameplate, which may not be the enemy you blocked; the game doesn't tell addons who attacked you.
 - **Action bars** (off by default): glows the ability's buttons on your action bars while its opening is up, in any stance, with a glow style of your choice. It stops when you use the ability, or while it's on cooldown.
   - Works with Blizzard's bars, EllesmereUI Action Bars, and bar addons built on LibActionButton, such as Bartender4 and ElvUI. Buttons that cast the spell through a macro glow too.

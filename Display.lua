@@ -3,7 +3,8 @@ local L = ns.L -- all text lives in Strings.lua
 
 -- On-screen alerts: a text and a spell icon for each ability. Each can be
 -- unlocked and dragged anywhere; positions are saved in the ability's
--- textPos / iconPos.
+-- textPos / iconPos. The icons can instead be grouped (General tab): they
+-- then sit side by side, growing from one spot that's dragged as a whole.
 
 local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
 
@@ -58,7 +59,7 @@ local function CountdownWanted(el)
     return el.kind == "icon" or not cfg.showIcon
 end
 
-local function UpdateCountdown(el)
+local function UpdateOneCountdown(el)
     local fs = el.countdown
     if not CountdownWanted(el) then
         fs:Hide()
@@ -79,6 +80,17 @@ local function UpdateCountdown(el)
     end
     fs:SetFormattedText("%.1f", math.max(remaining, 0))
     fs:Show()
+end
+
+local function UpdateCountdown(el)
+    UpdateOneCountdown(el)
+    -- The icon's second copy on the nameplate shows the same number.
+    local copy = el.plateCopy
+    if copy then
+        local fs = el.countdown
+        copy.countdown:SetShown(fs:IsShown())
+        if fs:IsShown() then copy.countdown:SetText(fs:GetText()) end
+    end
 end
 
 local function CreateElement(ability, kind, defaultX, defaultY, holdWhile)
@@ -213,11 +225,167 @@ local function StartGlow(f, style)
     end
 end
 
+-- Turns the icon's glow on or off, on its nameplate copy too when that's up.
+local function SetGlow(el, on)
+    local style = ns.Config(el.abilityKey).iconGlow
+    el.glowing = on
+    if on then StartGlow(el.body, style) else StopGlow(el.body) end
+    local copy = el.plateCopy
+    if copy then
+        if on and copy:IsShown() then StartGlow(copy, style) else StopGlow(copy) end
+    end
+end
+
 local function RefreshIconTexture(el, ability)
     local id = ns.GetSpellID(ability.key) or ability.ids[#ability.ids]
     local tex = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(id)
         or (GetSpellTexture and GetSpellTexture(id))
     el.texture:SetTexture(tex or ability.icon)
+    if el.plateCopy then el.plateCopy.texture:SetTexture(tex or ability.icon) end
+end
+
+-- Grouped icons (General tab, "iconLayout" = "group"): every icon that's up
+-- and not on a nameplate sits in one row or column, growing from the group's
+-- spot the way "groupGrow" says. They're in the order they came up, so a new
+-- icon goes on the end and the ones already up stay where they are. Icons
+-- close up when one goes. The spot is an invisible anchor frame, saved in "groupPos"; while
+-- unlocked, a highlighted handle over the whole group drags it, and every
+-- enabled ability's icon shows so the layout can be seen.
+local group = { unlocked = false, joined = 0 }
+
+local function Grouped()
+    return ns.General().iconLayout == "group"
+end
+
+local function ApplyGroupPosition()
+    local anchor = group.anchor
+    anchor:ClearAllPoints()
+    local pos = ns.General().groupPos
+    if pos then
+        anchor:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
+    else
+        anchor:SetPoint("CENTER", UIParent, "CENTER", 0, 100)
+    end
+end
+
+-- Puts every icon in the group where it belongs. Called whenever one joins
+-- or leaves, changes size, or the group's settings change.
+function ns.LayoutGroup()
+    local anchor = group.anchor
+    if not anchor then return end
+    local general = ns.General()
+    local grow = ns.GROUP_GROW[general.groupGrow] or ns.GROUP_GROW.RIGHT
+    local gap = tonumber(general.groupSpacing) or 0
+
+    -- The icons in the group, oldest first. Each keeps the number it got
+    -- when it joined until it leaves.
+    local items, total = {}, 0
+    for _, ability in ipairs(ns.ABILITIES) do
+        local el = Element(ability.key, "icon")
+        if el and el.inGroup and el.frame:IsShown() then
+            if not el.groupJoined then
+                group.joined = group.joined + 1
+                el.groupJoined = group.joined
+            end
+            local size = el.frame:GetWidth()
+            total = total + size + (#items > 0 and gap or 0)
+            items[#items + 1] = { el = el, size = size }
+        elseif el then
+            el.groupJoined = nil
+        end
+    end
+    table.sort(items, function(a, b) return a.el.groupJoined < b.el.groupJoined end)
+
+    -- Each icon's centre, as a distance along the growing direction. The
+    -- first icon sits on the spot; a centered group has its middle there.
+    local lo, hi, across = -32, 32, 64
+    if #items > 0 then
+        local edge = grow.centered and -total / 2 or -items[1].size / 2
+        lo, hi, across = edge, edge, 0
+        for _, item in ipairs(items) do
+            local centre = edge + item.size / 2
+            item.el.frame:ClearAllPoints()
+            item.el.frame:SetPoint("CENTER", anchor, "CENTER", grow[1] * centre, grow[2] * centre)
+            edge = edge + item.size + gap
+            hi = edge - gap
+            across = math.max(across, item.size)
+        end
+    end
+
+    -- The drag handle covers the whole group.
+    local pad, half = 6, across / 2
+    local x1, x2, y1, y2 = -half, half, -half, half
+    if grow[1] ~= 0 then
+        x1, x2 = math.min(grow[1] * lo, grow[1] * hi), math.max(grow[1] * lo, grow[1] * hi)
+    else
+        y1, y2 = math.min(grow[2] * lo, grow[2] * hi), math.max(grow[2] * lo, grow[2] * hi)
+    end
+    group.handle:ClearAllPoints()
+    group.handle:SetPoint("BOTTOMLEFT", anchor, "CENTER", x1 - pad, y1 - pad)
+    group.handle:SetPoint("TOPRIGHT", anchor, "CENTER", x2 + pad, y2 + pad)
+end
+
+local function SetGroupUnlocked(value)
+    value = value and true or false
+    if group.unlocked == value then return end
+    group.unlocked = value
+    group.handle:SetShown(value)
+    for _, ability in ipairs(ns.ABILITIES) do
+        local el = Element(ability.key, "icon")
+        local cfg = ns.Config(ability.key)
+        -- Show every icon that can come up, so the layout can be seen. They
+        -- stay click-through: the handle underneath takes the drag.
+        local show = value and cfg.enabled and cfg.showIcon
+        if el and (show or el.unlocked) then
+            el.unlocked = show and true or false
+            el.fade:Stop()
+            el.fading = false
+            el.frame:SetFrameStrata(show and "FULLSCREEN_DIALOG" or "HIGH")
+            el.frame:SetAlpha(1)
+            el.frame:SetShown(el.unlocked)
+            if show and el.onShow then el.onShow() end
+        end
+        if ns.OnUnlockChanged then ns.OnUnlockChanged(ability.key, "icon", value) end
+    end
+    if ns.OnUnlockChanged then ns.OnUnlockChanged("general", "icon", value) end
+    ns.LayoutGroup()
+end
+
+local function CreateGroup()
+    local anchor = CreateFrame("Frame", "OverpowerAlertIconGroupFrame", UIParent)
+    anchor:SetSize(2, 2)
+    anchor:SetClampedToScreen(true)
+    anchor:SetMovable(true)
+    if anchor.SetDontSavePosition then anchor:SetDontSavePosition(true) end
+    group.anchor = anchor
+
+    local handle = CreateFrame("Frame", nil, anchor)
+    handle:SetFrameStrata("FULLSCREEN_DIALOG")
+    handle:SetFrameLevel(1) -- under the icons, which are click-through
+    handle:EnableMouse(true)
+    handle:RegisterForDrag("LeftButton")
+    handle:Hide()
+    group.handle = handle
+
+    local bg = handle:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0.5, 1, 0.35)
+    local hint = handle:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hint:SetPoint("TOP", handle, "BOTTOM", 0, -4)
+    hint:SetText(L.MOVE_GROUP_HINT)
+
+    handle:SetScript("OnMouseUp", function(_, button)
+        if button == "RightButton" then SetGroupUnlocked(false) end
+    end)
+    handle:SetScript("OnDragStart", function() anchor:StartMoving() end)
+    handle:SetScript("OnDragStop", function()
+        anchor:StopMovingOrSizing()
+        local point, _, relPoint, x, y = anchor:GetPoint(1)
+        ns.General().groupPos = { point, relPoint, math.floor(x + 0.5), math.floor(y + 0.5) }
+    end)
+
+    ApplyGroupPosition()
+    ns.LayoutGroup()
 end
 
 -- Optionally the icon sits on the target's nameplate instead of its fixed
@@ -227,6 +395,10 @@ end
 -- and nameplates coming and going.
 -- The icon's facing edge sits on the chosen side of the plate, then moves by
 -- the X/Y offset (so two abilities on the same side can sit apart).
+-- With "nameplateBoth" the icon shows in both places at once: the icon itself
+-- stays at its normal position (or in the group), and a second copy of it
+-- (el.plateCopy, a child frame, so it shows, fades and hides with the icon)
+-- goes on the nameplate whenever there is one.
 local OPPOSITE = { TOP = "BOTTOM", BOTTOM = "TOP", LEFT = "RIGHT", RIGHT = "LEFT" }
 
 -- The nameplate the icon belongs on: the target's, except that Overpower's
@@ -254,26 +426,44 @@ local function PlaceIcon(el)
     local plate = cfg.iconOnNameplate and not el.unlocked and AbilityNameplate(el.abilityKey) or nil
     local side = OPPOSITE[cfg.nameplateSide] and cfg.nameplateSide or "TOP"
     local x, y = tonumber(cfg.nameplateX) or 0, tonumber(cfg.nameplateY) or 0
+    local both = cfg.iconOnNameplate and cfg.nameplateBoth and not el.unlocked
     local mode
-    if plate then
+    if both then
+        mode = "fixed"
+    elseif plate then
         mode = "plate"
     elseif cfg.iconOnNameplate and not el.unlocked and not cfg.nameplateFallback then
         mode = "hidden"
     else
         mode = "fixed"
     end
+    -- At its fixed position, it may be one of the grouped icons instead.
+    local grouped = mode == "fixed" and Grouped()
     -- Only move the frame when something changed.
-    local key = mode .. tostring(plate) .. side .. x .. "," .. y
+    local key = (grouped and "group" or mode) .. (both and "+" or "") .. tostring(plate) .. side .. x .. "," .. y
     if key == el.placedKey then return end
     el.placedKey = key
 
+    local copy = el.plateCopy
+    if both and plate then
+        copy:ClearAllPoints()
+        copy:SetPoint(OPPOSITE[side], plate, side, x, y)
+        copy:Show()
+        if el.glowing then StartGlow(copy, cfg.iconGlow) end
+    else
+        StopGlow(copy)
+        copy:Hide()
+    end
+
+    el.inGroup = grouped
     if mode == "plate" then
         el.frame:ClearAllPoints()
         el.frame:SetPoint(OPPOSITE[side], plate, side, x, y)
-    elseif mode == "fixed" then
+    elseif mode == "fixed" and not grouped then
         ApplyPosition(el)
     end
     el.body:SetShown(mode ~= "hidden")
+    ns.LayoutGroup() -- it joined or left the group
 end
 
 -- With "alert even while on cooldown", the icon looks like an action button
@@ -284,10 +474,9 @@ local COOLDOWN_CHECK = 0.1
 -- Starts the swipe from the game's cooldown. In combat the start and duration
 -- can be secret, so the duration object (which the swipe can draw without us
 -- reading it) comes first.
-local function StartSwipe(el)
+local function StartSwipe(el, swipe)
     local id = ns.GetSpellID(el.abilityKey)
     if not id then return end
-    local swipe = el.swipe
     if C_Spell.GetSpellCooldownDuration and swipe.SetCooldownFromDurationObject then
         local ok, dur = pcall(C_Spell.GetSpellCooldownDuration, id, true) -- true: not the GCD
         if ok and dur and pcall(swipe.SetCooldownFromDurationObject, swipe, dur) then return end
@@ -301,15 +490,17 @@ end
 local function SetCoolingDown(el, cooling)
     if el.coolingDown == cooling then return end
     el.coolingDown = cooling
+    local copy = el.plateCopy
     el.texture:SetDesaturated(cooling)
+    copy.texture:SetDesaturated(cooling)
     if cooling then
-        StopGlow(el.body)
-        StartSwipe(el)
+        SetGlow(el, false)
+        StartSwipe(el, el.swipe)
+        StartSwipe(el, copy.swipe)
     else
         el.swipe:Clear()
-        if el.frame:IsShown() and not el.fading then
-            StartGlow(el.body, ns.Config(el.abilityKey).iconGlow)
-        end
+        copy.swipe:Clear()
+        if el.frame:IsShown() and not el.fading then SetGlow(el, true) end
     end
 end
 
@@ -329,9 +520,12 @@ function ns.ApplyIconStyle(abilityKey)
     local cfg = ns.Config(abilityKey)
     local size = cfg.iconSize or 64
     el.frame:SetSize(size, size)
+    el.plateCopy:SetSize(size, size)
     ns.SetFont(el.countdown, math.max(12, math.floor(size * 0.4)), "THICKOUTLINE")
+    ns.SetFont(el.plateCopy.countdown, math.max(12, math.floor(size * 0.4)), "THICKOUTLINE")
     -- Glows are sized when they start, so restart any that's showing.
-    if el.frame:IsShown() and not el.coolingDown then StartGlow(el.body, cfg.iconGlow) else StopGlow(el.body) end
+    SetGlow(el, el.frame:IsShown() and not el.coolingDown)
+    ns.LayoutGroup() -- a different size moves its neighbours
 end
 
 function ns.ShowIcon(abilityKey)
@@ -342,7 +536,38 @@ end
 -- Setup and shared controls
 --------------------------------------------------------------------------------
 
+-- The parts of an icon, on `body`: border, spell texture, cooldown swipe and
+-- countdown number. Returns the texture, swipe and countdown.
+local function BuildIconParts(body)
+    local border = body:CreateTexture(nil, "BACKGROUND")
+    border:SetPoint("TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", 1, -1)
+    border:SetColorTexture(0, 0, 0, 1)
+    local texture = body:CreateTexture(nil, "ARTWORK")
+    texture:SetAllPoints()
+    texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    -- Cooldown swipe, for alerts allowed while on cooldown. Our own
+    -- countdown shows the opening, so the swipe has no numbers.
+    local swipe = CreateFrame("Cooldown", nil, body, "CooldownFrameTemplate")
+    swipe:SetAllPoints()
+    swipe:SetDrawEdge(false)
+    swipe:SetHideCountdownNumbers(true)
+    if swipe.SetDrawBling then swipe:SetDrawBling(false) end
+    swipe:SetFrameLevel(body:GetFrameLevel() + 2)
+    -- On its own layer above the glow, so the glow never covers the number.
+    local countdownLayer = CreateFrame("Frame", nil, body)
+    countdownLayer:SetAllPoints()
+    countdownLayer:SetFrameLevel(body:GetFrameLevel() + 20)
+    local countdown = countdownLayer:CreateFontString(nil, "OVERLAY")
+    countdown:SetPoint("CENTER")
+    countdown:SetTextColor(1, 1, 1)
+    ns.SetFont(countdown, 26, "THICKOUTLINE")
+    countdown:Hide()
+    return texture, swipe, countdown
+end
+
 function ns.InitDisplay()
+    CreateGroup()
     for _, ability in ipairs(ns.ABILITIES) do
         local d = ability.defaults
         local function isActive() return ns.IsActive(ability.key) end
@@ -370,33 +595,13 @@ function ns.InitDisplay()
         local body = CreateFrame("Frame", nil, f)
         body:SetAllPoints()
         iconEl.body = body
-        local border = body:CreateTexture(nil, "BACKGROUND")
-        border:SetPoint("TOPLEFT", -1, 1)
-        border:SetPoint("BOTTOMRIGHT", 1, -1)
-        border:SetColorTexture(0, 0, 0, 1)
-        local texture = body:CreateTexture(nil, "ARTWORK")
-        texture:SetAllPoints()
-        texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-        iconEl.texture = texture
-        -- Cooldown swipe, for alerts allowed while on cooldown. Our own
-        -- countdown shows the opening, so the swipe has no numbers.
-        local swipe = CreateFrame("Cooldown", nil, body, "CooldownFrameTemplate")
-        swipe:SetAllPoints()
-        swipe:SetDrawEdge(false)
-        swipe:SetHideCountdownNumbers(true)
-        if swipe.SetDrawBling then swipe:SetDrawBling(false) end
-        swipe:SetFrameLevel(body:GetFrameLevel() + 2)
-        iconEl.swipe = swipe
-        -- On its own layer above the glow, so the glow never covers the number.
-        local countdownLayer = CreateFrame("Frame", nil, body)
-        countdownLayer:SetAllPoints()
-        countdownLayer:SetFrameLevel(body:GetFrameLevel() + 20)
-        local iconCountdown = countdownLayer:CreateFontString(nil, "OVERLAY")
-        iconCountdown:SetPoint("CENTER")
-        iconCountdown:SetTextColor(1, 1, 1)
-        ns.SetFont(iconCountdown, 26, "THICKOUTLINE")
-        iconCountdown:Hide()
-        iconEl.countdown = iconCountdown
+        iconEl.texture, iconEl.swipe, iconEl.countdown = BuildIconParts(body)
+        -- The second copy for the nameplate ("nameplateBoth").
+        local copy = CreateFrame("Frame", nil, f)
+        copy:SetSize(64, 64)
+        copy:Hide()
+        copy.texture, copy.swipe, copy.countdown = BuildIconParts(copy)
+        iconEl.plateCopy = copy
         iconEl.onShow = function()
             RefreshIconTexture(iconEl, ability)
             iconEl.placedKey = nil
@@ -409,8 +614,9 @@ function ns.InitDisplay()
             UpdateCooldownLook(iconEl)
         end
         f:HookScript("OnHide", function()
-            StopGlow(body)
+            SetGlow(iconEl, false)
             SetCoolingDown(iconEl, false)
+            ns.LayoutGroup() -- the others close up
         end)
         ApplyPosition(iconEl)
         ns.ApplyIconStyle(ability.key)
@@ -430,6 +636,7 @@ function ns.HideAlert(abilityKey)
 end
 
 function ns.IsUnlocked(abilityKey, kind)
+    if kind == "icon" and Grouped() then return group.unlocked end
     local el = Element(abilityKey, kind)
     return el ~= nil and el.unlocked
 end
@@ -444,6 +651,11 @@ function ns.SetUnlocked(abilityKey, kind, value)
                 end
             end
         end
+        return
+    end
+    -- Grouped icons move together: unlocking any of them unlocks the group.
+    if kind == "icon" and Grouped() then
+        SetGroupUnlocked(value)
         return
     end
     local el = Element(abilityKey, kind)
@@ -464,9 +676,29 @@ function ns.SetUnlocked(abilityKey, kind, value)
 end
 
 function ns.ResetPosition(abilityKey, kind)
+    if kind == "icon" and Grouped() then
+        ns.General().groupPos = nil
+        ApplyGroupPosition()
+        return
+    end
     local el = Element(abilityKey, kind)
     if not el then return end
     ns.Config(abilityKey)[kind .. "Pos"] = nil
     ApplyPosition(el)
     el.placedKey = nil -- the icon may belong on a nameplate instead
+end
+
+-- Switches between separate icon positions and the group ("separate" or
+-- "group"), moving any icons that are up.
+function ns.SetIconLayout(layout)
+    ns.SetUnlocked(nil, "icon", false) -- lock under the old layout first
+    ns.General().iconLayout = layout == "group" and "group" or "separate"
+    for _, ability in ipairs(ns.ABILITIES) do
+        local el = Element(ability.key, "icon")
+        if el then
+            el.placedKey, el.inGroup = nil, false
+            if el.frame:IsShown() then PlaceIcon(el) end
+        end
+    end
+    ns.LayoutGroup()
 end

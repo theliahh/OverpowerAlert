@@ -504,14 +504,30 @@ local function SetCoolingDown(el, cooling)
     end
 end
 
+-- With "tintNoRage", the icon turns blue while the player is short on rage
+-- for it, as action buttons do.
+local NO_RAGE_TINT = { 0.5, 0.5, 1 }
+
+local function SetShortOnRage(el, short)
+    if el.shortOnRage == short then return end
+    el.shortOnRage = short
+    local r, g, b = 1, 1, 1
+    if short then r, g, b = unpack(NO_RAGE_TINT) end
+    el.texture:SetVertexColor(r, g, b)
+    if el.plateCopy then el.plateCopy.texture:SetVertexColor(r, g, b) end
+end
+
 local function UpdateCooldownLook(el)
     local now = GetTime()
     if now < (el.nextCooldownCheck or 0) then return end
     el.nextCooldownCheck = now + COOLDOWN_CHECK
     -- Previews and moving the icon always show it ready.
-    local cooling = not el.unlocked and not el.isPreview
-        and ns.Config(el.abilityKey).showOnCooldown and ns.OnCooldown(el.abilityKey)
+    local real = not el.unlocked and not el.isPreview
+    local cfg = ns.Config(el.abilityKey)
+    local cooling = real and cfg.showOnCooldown and ns.OnCooldown(el.abilityKey)
     SetCoolingDown(el, cooling and true or false)
+    local short = real and cfg.tintNoRage and ns.ShortOnRage(el.abilityKey)
+    SetShortOnRage(el, short and true or false)
 end
 
 function ns.ApplyIconStyle(abilityKey)
@@ -607,6 +623,7 @@ function ns.InitDisplay()
             iconEl.placedKey = nil
             PlaceIcon(iconEl)
             iconEl.coolingDown, iconEl.nextCooldownCheck = nil, 0
+            SetShortOnRage(iconEl, false)
             UpdateCooldownLook(iconEl)
         end
         iconEl.onUpdate = function()
@@ -616,6 +633,7 @@ function ns.InitDisplay()
         f:HookScript("OnHide", function()
             SetGlow(iconEl, false)
             SetCoolingDown(iconEl, false)
+            SetShortOnRage(iconEl, false)
             ns.LayoutGroup() -- the others close up
         end)
         ApplyPosition(iconEl)

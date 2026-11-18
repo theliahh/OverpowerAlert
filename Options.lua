@@ -22,7 +22,6 @@ local function Sizes(values)
 end
 
 local TEXT_SIZES = Sizes({ 24, 30, 36, 48, 64 })
-local ICON_SIZES = Sizes({ 40, 52, 64, 80, 100 })
 
 local NAMEPLATE_SIDES = {
     { value = "TOP",    label = L.SIDE_TOP },
@@ -95,6 +94,59 @@ local function CreateNumberBox(parent, abilityKey, key, onChange)
     return box
 end
 
+-- A slider for a whole number from minValue to maxValue, with steppers, and
+-- a box on its right showing the value that a size can also be typed into
+-- (saved on Enter or when it loses focus; out of range is clamped, anything
+-- else puts the value back). `getValue` is read when the page shows;
+-- `setValue` runs as it changes. Returns the slider, and a function that
+-- loads the saved value into it.
+local function CreateNumberSlider(parent, width, minValue, maxValue, getValue, setValue)
+    local slider = CreateFrame("Frame", nil, parent, "MinimalSliderWithSteppersTemplate")
+    slider:SetWidth(width)
+    local loading = false
+
+    local box = CreateFrame("EditBox", nil, slider, "InputBoxTemplate")
+    box:SetSize(44, 22)
+    box:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+    box:SetAutoFocus(false)
+    box:SetNumeric(true) -- digits only; the range is checked below
+    box:SetMaxLetters(3)
+    box:SetJustifyH("CENTER")
+    slider.input = box
+
+    local function Show(value) box:SetText(tostring(math.floor(value + 0.5))) end
+
+    slider:Init(getValue(), minValue, maxValue, maxValue - minValue, nil)
+    slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
+        if not box:HasFocus() then Show(value) end
+        if not loading then setValue(math.floor(value + 0.5)) end
+    end, slider)
+
+    local function Apply()
+        local v = tonumber(box:GetText())
+        if v then
+            v = math.max(minValue, math.min(maxValue, math.floor(v + 0.5)))
+            slider.Slider:SetValue(v) -- saves it, through OnValueChanged
+        end
+        Show(slider.Slider:GetValue())
+    end
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEditFocusLost", Apply)
+    box:SetScript("OnEscapePressed", function(self)
+        Show(slider.Slider:GetValue())
+        self:ClearFocus()
+    end)
+
+    local function Load()
+        loading = true
+        slider.Slider:SetValue(getValue())
+        loading = false
+        Show(getValue())
+    end
+    Show(getValue())
+    return slider, Load
+end
+
 local function CreateButton(parent, text, width)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(width, 24)
@@ -124,6 +176,7 @@ local function BuildAbilityPage(content, ability)
     local abilityKey = ability.key
     local function cfg() return ns.Config(abilityKey) end
     local menus = {}
+    local sizeLoaders = {} -- reload each size slider's saved value
 
     local desc = Label(content, ability.description, "GameFontHighlightSmall")
     desc:SetJustifyH("LEFT")
@@ -283,15 +336,28 @@ local function BuildAbilityPage(content, ability)
         local sizeLabel = Label(content, s.sizeLabel)
         sizeLabel:SetPoint("TOPLEFT", show, "BOTTOMLEFT", 4, -12)
 
-        local sizeDD = CreateRadioDropdown(content, 160,
-            function() return s.sizes end,
-            function() return cfg()[s.sizeKey] end,
-            function(value) cfg()[s.sizeKey] = value; s.applyStyle() end)
-        sizeDD:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -6)
-        menus[#menus + 1] = sizeDD
+        -- A size slider (s.range = { min, max }) or a dropdown of set sizes.
+        local sizeControl, gap
+        if s.range then
+            local load
+            sizeControl, load = CreateNumberSlider(content, 200, s.range[1], s.range[2],
+                function() return cfg()[s.sizeKey] end,
+                function(value) cfg()[s.sizeKey] = value; s.applyStyle() end)
+            sizeControl:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", -4, -2)
+            sizeLoaders[#sizeLoaders + 1] = load
+            gap = 64 -- room for the size box on its right
+        else
+            sizeControl = CreateRadioDropdown(content, 160,
+                function() return s.sizes end,
+                function() return cfg()[s.sizeKey] end,
+                function(value) cfg()[s.sizeKey] = value; s.applyStyle() end)
+            sizeControl:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -6)
+            menus[#menus + 1] = sizeControl
+            gap = 10
+        end
 
         local unlock = CreateButton(content, s.unlockText, 120)
-        unlock:SetPoint("LEFT", sizeDD, "RIGHT", 10, 0)
+        unlock:SetPoint("LEFT", sizeControl, "RIGHT", gap, 0)
         unlock:SetScript("OnClick", function()
             ns.SetUnlocked(abilityKey, s.kind, not ns.IsUnlocked(abilityKey, s.kind))
         end)
@@ -305,7 +371,7 @@ local function BuildAbilityPage(content, ability)
         preview:SetPoint("LEFT", reset, "RIGHT", 6, 0)
         preview:SetScript("OnClick", s.preview)
 
-        return sizeDD
+        return sizeControl
     end
 
     local textSizeDD = BuildDisplaySection(channelDD, {
@@ -320,13 +386,13 @@ local function BuildAbilityPage(content, ability)
         kind = "icon", unlockText = L.UNLOCK_ICON, lockText = L.LOCK_ICON, title = L.SPELL_ICON,
         showLabel = L.SHOW_ICON:format(ability.name, ability.name),
         showKey = "showIcon",
-        sizeLabel = L.ICON_SIZE, sizeKey = "iconSize", sizes = ICON_SIZES,
+        sizeLabel = L.ICON_SIZE, sizeKey = "iconSize", range = { ns.ICON_SIZE_MIN, ns.ICON_SIZE_MAX },
         applyStyle = function() ns.ApplyIconStyle(abilityKey) end,
         preview = function() ns.ShowIcon(abilityKey) end,
     })
 
     local glowLabel = Label(content, L.ICON_GLOW)
-    glowLabel:SetPoint("TOPLEFT", iconSizeDD, "BOTTOMLEFT", 0, -12)
+    glowLabel:SetPoint("TOPLEFT", iconSizeDD, "BOTTOMLEFT", 4, -8)
 
     local glowDD = CreateRadioDropdown(content, 160,
         function() return ns.GLOW_STYLES end,
@@ -339,9 +405,12 @@ local function BuildAbilityPage(content, ability)
     glowDD:SetPoint("TOPLEFT", glowLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = glowDD
 
+    local noRage = CreateCheckbox(content, L.TINT_NO_RAGE:format(ability.name), abilityKey, "tintNoRage", glowDD, -8)
+    noRage:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", -4, -8)
+
     local moveHint = Label(content, L.MOVE_HINT, "GameFontDisableSmall")
     moveHint:SetJustifyH("LEFT")
-    moveHint:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", 0, -16)
+    moveHint:SetPoint("TOPLEFT", noRage, "BOTTOMLEFT", 4, -12)
 
     ---------------------------------------------------------------------------
     -- Icon on the target's nameplate
@@ -437,6 +506,7 @@ local function BuildAbilityPage(content, ability)
     return function()
         customBox:SetShown(cfg().sound == "CUSTOM")
         customBox.Place()
+        for _, load in ipairs(sizeLoaders) do load() end
         for _, dd in ipairs(menus) do dd:GenerateMenu() end
         RefreshSoundText()
     end

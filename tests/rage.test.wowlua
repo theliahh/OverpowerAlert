@@ -1,0 +1,88 @@
+-- "Tint the icon blue while you don't have enough rage": from the game's own
+-- "short on power" answer, since rage itself is hidden.
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local REVENGE = 25288
+local usable, noPower = true, false
+
+@beforeEach
+local function setup()
+    usable, noPower = true, false
+    mock.fake("GetShapeshiftForm", function() return 2 end)
+    mock.fake("GetShapeshiftFormInfo", function() return nil, nil, nil, 71 end)
+    mock.stub(C_Spell, "IsSpellUsable", function(id)
+        if id == REVENGE then return usable, noPower end
+        return false, false
+    end)
+    OverpowerAlertDB.revenge.tintNoRage = true
+    mock.player:enterCombat()
+end
+
+@afterEach
+local function settle()
+    OverpowerAlertDB.revenge.tintNoRage = false
+    mock.waitSeconds(6)
+    mock.player:leaveCombat()
+end
+
+-- The spell texture: the ARTWORK texture on the icon's inner frame.
+local function texture()
+    local body = _G["OverpowerAlertRevengeIconFrame"]:GetChildren()
+    for _, region in ipairs({ body:GetRegions() }) do
+        if region:GetObjectType() == "Texture" and region:GetDrawLayer() == "ARTWORK" then return region end
+    end
+end
+
+local function tinted()
+    local r, g, b = texture():GetVertexColor()
+    return r < 0.9 and g < 0.9 and b > 0.9
+end
+
+local function setRage(enough)
+    usable, noPower = enough, not enough
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitSeconds(0.25) -- the look is re-checked every 0.1 s
+end
+
+local function block()
+    mock.fireUnitEvent("UNIT_COMBAT", "player", "BLOCK", "", 0, 1)
+    mock.waitFrames(2)
+end
+
+@test("with enough rage the icon is its normal colour")
+local function enough()
+    block()
+    mock.waitSeconds(0.25)
+    expect(_G["OverpowerAlertRevengeIconFrame"]).toBeShown()
+    expect(tinted()).toBe(false)
+end
+
+@test("short on rage: blue, and back once there's enough")
+local function short()
+    block()
+    setRage(false)
+    expect(_G["OverpowerAlertRevengeIconFrame"]).toBeShown() -- still up
+    expect(tinted()).toBe(true)
+    setRage(true)
+    expect(tinted()).toBe(false)
+end
+
+@test("off: never tinted")
+local function off()
+    OverpowerAlertDB.revenge.tintNoRage = false
+    block()
+    setRage(false)
+    expect(tinted()).toBe(false)
+end
+
+@test("unusable for another reason (wrong stance): not tinted")
+local function otherReason()
+    block()
+    usable, noPower = false, false
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitSeconds(0.25)
+    expect(tinted()).toBe(false)
+end

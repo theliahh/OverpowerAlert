@@ -149,6 +149,7 @@ L.ICON_SIZE = "Icon size"
 L.UNLOCK_ICON = "Unlock Icon"
 L.LOCK_ICON = "Lock Icon"
 L.ICON_GLOW = "Icon glow"
+L.TINT_NO_RAGE = "Tint the icon blue while you don't have enough rage for %s" -- %s: ability name
 
 L.RESET_POSITION = "Reset Position"
 L.PREVIEW = "Preview"

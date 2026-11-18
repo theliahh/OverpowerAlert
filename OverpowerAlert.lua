@@ -108,8 +108,12 @@ local function Defaults(ability)
         barGlow = false,           -- glow the ability's action bar buttons
         barGlowStyle = "proc",
         showOnCooldown = false,    -- alert even while the ability is on cooldown
+        tintNoRage = false,        -- tint the icon blue while short on rage
     }
 end
+
+-- The icon size slider's range, in pixels.
+ns.ICON_SIZE_MIN, ns.ICON_SIZE_MAX = 10, 200
 
 -- Settings for one ability.
 function ns.Config(abilityKey)
@@ -386,6 +390,9 @@ local function LoadSettings()
         -- Older versions offered a different built-in list (SOUNDKIT names);
         -- move those selections to the default.
         if not ns.IsValidSoundKey(cfg.sound) then cfg.sound = ability.defaults.sound end
+        -- A whole number of pixels within the slider's range.
+        local size = tonumber(cfg.iconSize) or defaults.iconSize
+        cfg.iconSize = math.max(ns.ICON_SIZE_MIN, math.min(ns.ICON_SIZE_MAX, math.floor(size + 0.5)))
     end
 end
 
@@ -457,6 +464,18 @@ function ns.IsUsable(abilityKey)
     -- Treat "usable except for rage" as available too; you'll have the rage
     -- by the time you react.
     return usable == true or noPower == true
+end
+
+-- Whether the only thing stopping the ability is rage. The player's rage is a
+-- secret value, but the game's own answer (IsSpellUsable's second return, as
+-- action buttons use to turn blue) is readable. Only meaningful in a stance
+-- the ability can be cast in; elsewhere it's unusable for the stance.
+function ns.ShortOnRage(abilityKey)
+    local id = state[abilityKey].spellID
+    if not (id and C_Spell and C_Spell.IsSpellUsable) then return false end
+    local ok, usable, noPower = pcall(C_Spell.IsSpellUsable, id)
+    if not ok or not (Readable(usable) and Readable(noPower)) then return false end
+    return usable == false and noPower == true
 end
 
 -- Whether the ability is on its own cooldown (not just the global cooldown).

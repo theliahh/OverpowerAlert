@@ -13,7 +13,11 @@ ns.ABILITIES = {
         description = L.OVERPOWER_DESCRIPTION,
         defaults = {
             sound = "cdm:316723", -- Warhorn
-            stances = { battle = true, defensive = false, berserker = false },
+            -- Berserker too: it's no use there, but the alert says to swap
+            -- to Battle Stance while the opening lasts.
+            stances = { battle = true, defensive = false, berserker = true },
+            -- On the mob that dodged, since Overpower only works on that one.
+            iconOnNameplate = true,
             textY = 180, iconX = 0, iconY = 100,
         },
     },
@@ -98,7 +102,7 @@ local function Defaults(ability)
         iconSize = 64,
         iconGlow = "proc",
         iconPos = nil,
-        iconOnNameplate = false,   -- anchor the icon to the target's nameplate
+        iconOnNameplate = ability.defaults.iconOnNameplate == true, -- anchor the icon to the target's nameplate
         nameplateSide = "TOP",     -- TOP, BOTTOM, LEFT or RIGHT of the nameplate
         nameplateX = 0,            -- offset from that side of the nameplate, in pixels
         nameplateY = 8,

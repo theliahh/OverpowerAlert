@@ -219,9 +219,11 @@ local function bothPlaces()
     mock.unitOf("target"):showNameplate()
     group("RIGHT")
     bothOn(true)
+    OverpowerAlertDB.overpower.iconOnNameplate = false -- in the group, not on the nameplate (its default)
     ns.ShowIcon("overpower")
     ns.ShowIcon("revenge")
     mock.waitFrames(2)
+    OverpowerAlertDB.overpower.iconOnNameplate = true
     expect(offset(icon("Revenge"))).toBe(70) -- in the group, after Overpower
     local copy = plateCopy("Revenge")
     expect(copy ~= nil).toBe(true)

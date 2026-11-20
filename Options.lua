@@ -521,8 +521,48 @@ local function BuildGeneralPage(content)
     desc:SetJustifyH("LEFT")
     desc:SetPoint("TOPLEFT", 16, -8)
 
+    ---------------------------------------------------------------------------
+    -- Talent sets: separate settings for primary and secondary talents
+    ---------------------------------------------------------------------------
+    local specLabel = Label(content, L.TALENT_SETS)
+    specLabel:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -16)
+
+    -- The talent set the player is on now, whether or not it's turned on.
+    local currentSet = Label(content, "", "GameFontHighlight")
+    currentSet:SetPoint("LEFT", specLabel, "RIGHT", 12, 0)
+    function ns.RefreshCurrentSet()
+        local group = ns.ActiveSpecGroup()
+        currentSet:SetText(group and L.CURRENT_SET:format(group == 2 and L.SET_SECONDARY or L.SET_PRIMARY) or "")
+    end
+
+    local perSpec = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+    perSpec:SetPoint("TOPLEFT", specLabel, "BOTTOMLEFT", -4, -4)
+    local perSpecText = perSpec.Text or perSpec:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    perSpecText:SetPoint("LEFT", perSpec, "RIGHT", 4, 1)
+    perSpecText:SetText(L.PER_SPEC)
+
+    local specStatus = Label(content, "", "GameFontNormalSmall")
+    specStatus:SetJustifyH("LEFT")
+    specStatus:SetPoint("TOPLEFT", perSpec, "BOTTOMLEFT", 4, -4)
+
+    local function RefreshSpec()
+        ns.RefreshCurrentSet()
+        perSpec:SetChecked(ns.PerSpec())
+        specStatus:SetText(ns.PerSpec()
+            and L.EDITING_SPEC:format(ns.SpecName(OverpowerAlertDB.activeSpec))
+            or L.EDITING_ALL)
+    end
+    perSpec:SetScript("OnClick", function(self)
+        ns.SetPerSpec(self:GetChecked())
+        RefreshSpec()
+    end)
+
+    local specHint = Label(content, L.PER_SPEC_HINT, "GameFontDisableSmall")
+    specHint:SetJustifyH("LEFT")
+    specHint:SetPoint("TOPLEFT", specStatus, "BOTTOMLEFT", 0, -6)
+
     local fontLabel = Label(content, L.FONT)
-    fontLabel:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -16)
+    fontLabel:SetPoint("TOPLEFT", specHint, "BOTTOMLEFT", 0, -20)
 
     local fontDD = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
     fontDD:SetWidth(240)
@@ -619,6 +659,7 @@ local function BuildGeneralPage(content)
     groupHint:SetPoint("TOPLEFT", unlock, "BOTTOMLEFT", 0, -10)
 
     return function()
+        RefreshSpec()
         fontDD:GenerateMenu()
         layoutDD:GenerateMenu()
         growDD:GenerateMenu()
@@ -705,12 +746,20 @@ function ns.CreateOptions()
         return content
     end
 
-    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 520))
+    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 620))
     for _, ability in ipairs(ns.ABILITIES) do
         refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1520), ability)
     end
 
     panel:SetScript("OnShow", function() SelectTab(selected) end)
+
+    -- Every setting changed at once (a talent set swap): reload the page
+    -- being shown. Hiding it first makes its checkboxes re-read on show.
+    function ns.RefreshOptions()
+        if not panel:IsVisible() then return end
+        pages[selected]:Hide()
+        SelectTab(selected)
+    end
 
     if Settings and Settings.RegisterCanvasLayoutCategory then
         category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)

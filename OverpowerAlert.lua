@@ -398,6 +398,97 @@ local function LoadSettings()
         local size = tonumber(cfg.iconSize) or defaults.iconSize
         cfg.iconSize = math.max(ns.ICON_SIZE_MIN, math.min(ns.ICON_SIZE_MAX, math.floor(size + 0.5)))
     end
+
+    -- Talent set profiles (below).
+    db.perSpec = db.perSpec == true
+    if type(db.activeSpec) ~= "number" then db.activeSpec = 1 end
+    if type(db.specProfiles) ~= "table" then db.specProfiles = {} end
+end
+
+--------------------------------------------------------------------------------
+-- Talent set profiles
+--
+-- With "perSpec" on, each talent set (primary, secondary) has its own
+-- settings. The live ones above (OverpowerAlertDB[abilityKey] and .general)
+-- belong to the set in use, db.activeSpec; the other set's wait in
+-- db.specProfiles[n] until the player swaps. The font is shared. The game
+-- only tells addons which set is in use (1 or 2), not the talents in it.
+--
+-- Untested with real secondary talents: the set is checked on every event a
+-- swap could send (SPELLS_CHANGED included, as the spellbook changes).
+--------------------------------------------------------------------------------
+
+local PROFILE_KEYS = { "general" }
+for _, ability in ipairs(ns.ABILITIES) do PROFILE_KEYS[#PROFILE_KEYS + 1] = ability.key end
+
+local function DeepCopy(t)
+    if type(t) ~= "table" then return t end
+    local copy = {}
+    for k, v in pairs(t) do copy[k] = DeepCopy(v) end
+    return copy
+end
+
+-- The talent set in use (1 primary, 2 secondary), or nil if unknown.
+-- Forever has C_SpecializationInfo's (confirmed in game: 1 on primary); older
+-- clients the global.
+local function SpecGroupFrom(fn)
+    if type(fn) ~= "function" then return nil end
+    local ok, group = pcall(fn)
+    if ok and type(group) == "number" and group >= 1 then return group end
+end
+
+function ns.ActiveSpecGroup()
+    return SpecGroupFrom(C_SpecializationInfo and C_SpecializationInfo.GetActiveSpecGroup)
+        or SpecGroupFrom(rawget(_G, "GetActiveTalentGroup"))
+end
+
+function ns.SpecName(group)
+    return group == 2 and L.SPEC_SECONDARY or L.SPEC_PRIMARY
+end
+
+function ns.PerSpec()
+    return OverpowerAlertDB.perSpec
+end
+
+-- Puts away the live settings as the current set's and makes `group`'s live:
+-- its own if it has them, otherwise a copy of the current set's.
+local function SwitchToSpec(group)
+    local db = OverpowerAlertDB
+    local from = db.activeSpec
+    local outgoing = {}
+    for _, k in ipairs(PROFILE_KEYS) do outgoing[k] = db[k] end
+    local incoming = db.specProfiles[group]
+    db.specProfiles[from] = outgoing
+    db.specProfiles[group] = nil
+    for _, k in ipairs(PROFILE_KEYS) do
+        if incoming then db[k] = incoming[k] else db[k] = DeepCopy(outgoing[k]) end
+    end
+    db.activeSpec = group
+    LoadSettings() -- fills in anything missing
+    db.general.font = outgoing.general.font -- shared by both
+end
+
+-- Swaps settings if the player is now on the other talent set.
+function ns.CheckSpec()
+    if ns.RefreshCurrentSet then ns.RefreshCurrentSet() end -- the General tab shows it
+    if not ns.PerSpec() then return end
+    local group = ns.ActiveSpecGroup()
+    if not group or group == OverpowerAlertDB.activeSpec then return end
+    SwitchToSpec(group)
+    if ns.ApplySettings then ns.ApplySettings() end
+    if ns.RefreshOptions then ns.RefreshOptions() end
+    print("|cffff6619" .. L.ADDON_TITLE .. "|r " .. L.SPEC_SWITCHED:format(ns.SpecName(group)))
+end
+
+-- Turns separate settings per talent set on or off. Either way the settings
+-- in use stay as they are: turning it on makes them the current set's.
+function ns.SetPerSpec(on)
+    local db = OverpowerAlertDB
+    db.perSpec = on and true or false
+    if on then
+        db.activeSpec = ns.ActiveSpecGroup() or 1
+        db.specProfiles[db.activeSpec] = nil
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -920,6 +1011,13 @@ local function Refresh()
     victorious = (ReadVictorious() or false) ~= false
 end
 
+local SPEC_EVENTS = {
+    "ACTIVE_TALENT_GROUP_CHANGED", "PLAYER_SPECIALIZATION_CHANGED",
+    "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED",
+}
+local SPEC_EVENT = {}
+for _, e in ipairs(SPEC_EVENTS) do SPEC_EVENT[e] = true end
+
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         if ... ~= ADDON_NAME then return end
@@ -937,6 +1035,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
         Refresh()
         -- Fonts from addons that loaded after this one are available now.
         if ns.ApplyFont then ns.ApplyFont() end
+        -- Talents may have been swapped since the settings were saved.
+        ns.CheckSpec()
+        -- Any of these may come with a talent set swap.
+        for _, e in ipairs(SPEC_EVENTS) do pcall(self.RegisterEvent, self, e) end
         self:RegisterEvent("SPELLS_CHANGED")
         self:RegisterEvent("SPELL_UPDATE_USABLE")
         self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
@@ -958,7 +1060,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
     end
 
     if event == "SPELLS_CHANGED" then
+        ns.CheckSpec()
         Refresh()
+    elseif SPEC_EVENT[event] then
+        ns.CheckSpec()
     elseif event == "PLAYER_REGEN_DISABLED" then
         -- Events can lag; check lightly while in combat as a backstop.
         StartTicker()

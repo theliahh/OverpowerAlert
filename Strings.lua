@@ -65,6 +65,18 @@ L.BERSERKER_STANCE = "Berserker Stance"
 
 L.GENERAL = "General"
 L.GENERAL_DESCRIPTION = "Settings shared by every ability."
+L.TALENT_SETS = "Talent sets"
+L.CURRENT_SET = "Current set: %s"              -- %s: SET_PRIMARY or SET_SECONDARY
+L.SET_PRIMARY = "Primary"
+L.SET_SECONDARY = "Secondary"
+L.PER_SPEC ="Use separate settings for your primary and secondary talents"
+L.SPEC_PRIMARY = "primary talents"
+L.SPEC_SECONDARY = "secondary talents"
+L.EDITING_SPEC = "You're on your %s: changes on every tab apply to them." -- %s: SPEC_PRIMARY or SPEC_SECONDARY
+L.EDITING_ALL = "Your settings apply to both talent sets."
+L.PER_SPEC_HINT = "|cffffaa33Experimental:|r swapping talents switches to that set's settings. The first time, they start as a copy\n" ..
+    "of the set you came from. The font below is shared by both."
+L.SPEC_SWITCHED = "now using the settings for your %s" -- %s: SPEC_PRIMARY or SPEC_SECONDARY
 L.FONT = "Font"
 L.FONT_DEFAULT = "Default (game font)"
 L.FONT_HINT = "Used for the on-screen text and the countdown numbers of every ability.\n" ..

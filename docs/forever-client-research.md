@@ -63,6 +63,11 @@ From a probe in **Defensive Stance**, during combat (verified in-game):
 
 The other Overpower addon says this value can be secret in combat in some situations, maybe instances or encounters. We haven't seen that (unverified). Our fallback: if the value is secret, a combo-point change within 1.0 s of a target dodge, in either order, counts as a new opening.
 
+### Talent sets (dual spec)
+
+- `C_SpecializationInfo.GetActiveSpecGroup()` exists and returns `1` on a character with only primary talents (verified in-game). The classic global `GetActiveTalentGroup` is `nil`.
+- **Unverified:** what it returns on secondary talents (presumably `2`) and which event a swap sends. The per-talent-set settings check the set on `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_SPECIALIZATION_CHANGED`, `PLAYER_TALENT_UPDATE`, `TRAIT_CONFIG_UPDATED` and `SPELLS_CHANGED` (the spellbook changes on a swap), and at login. Once someone has secondary talents, check with: `/run print(C_SpecializationInfo.GetActiveSpecGroup())` on each set, and watch those events while swapping.
+
 ## How Overpower Alert detects procs
 
 The addon tracks each ability's **opening** in every stance, and decides separately whether to alert.

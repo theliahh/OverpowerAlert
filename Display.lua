@@ -720,3 +720,18 @@ function ns.SetIconLayout(layout)
     end
     ns.LayoutGroup()
 end
+
+-- Every setting changed at once (a talent set swap): lock everything, then
+-- re-apply each position, size and the icon layout.
+function ns.ApplySettings()
+    ns.SetUnlocked(nil, nil, false)
+    ApplyGroupPosition()
+    for _, ability in ipairs(ns.ABILITIES) do
+        for _, kind in ipairs(KINDS) do
+            local el = Element(ability.key, kind)
+            if el then ApplyPosition(el) end
+        end
+    end
+    ns.ApplyFont() -- text and icon sizes
+    ns.SetIconLayout(ns.General().iconLayout)
+end

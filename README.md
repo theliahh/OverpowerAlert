@@ -29,6 +29,7 @@ You choose which stances each ability alerts in: Battle, Defensive and Berserker
 
 Open the options with `/opa`, or from **Game Menu → Options → AddOns → Overpower Alert**. The **General** tab holds settings shared by every ability:
 
+- **Separate settings for primary and secondary talents** (off by default, untested): each talent set keeps its own settings on every tab, and swapping talents switches to that set's, with a chat message saying which. The first time you swap, the new set starts as a copy of the one you came from. The tab shows which set you're editing. The font is shared by both. Turning it off keeps the settings you're using now for both sets. The game only tells addons which set is in use, not the talents in it.
 - **Font:** the font for the on-screen text and the countdown numbers. Pick the game's default font or any font shared through LibSharedMedia (a few come built in; SharedMedia packs, ElvUI and similar addons add more). A sample shows the choice. If the addon that provided a font is removed, the text goes back to the default font.
 - **Icon positions:** where the spell icons go.
   - **Separate** (the default): each ability's icon has its own spot, moved with that ability's **Unlock Icon** button.

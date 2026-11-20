@@ -1,0 +1,109 @@
+-- Separate settings for primary and secondary talents (General tab).
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local specGroup = 1
+
+local function swapTo(group, event)
+    local prev = specGroup
+    specGroup = group
+    if event then
+        mock.fireEvent(event)
+    else
+        mock.fireEvent("ACTIVE_TALENT_GROUP_CHANGED", group, prev)
+    end
+end
+
+@beforeEach
+local function setup()
+    specGroup = 1
+    mock.stub(C_SpecializationInfo, "GetActiveSpecGroup", function() return specGroup end)
+end
+
+@afterEach
+local function reset()
+    ns.SetPerSpec(false)
+    OverpowerAlertDB.specProfiles = {}
+    OverpowerAlertDB.activeSpec = 1
+    OverpowerAlertDB.overpower.iconSize = 64
+    OverpowerAlertDB.overpower.enabled = true
+    OverpowerAlertDB.general.iconLayout = "separate"
+    OverpowerAlertDB.general.font = "DEFAULT"
+    ns.ApplySettings()
+end
+
+@test("off by default: swapping talents keeps the same settings")
+local function offByDefault()
+    expect(ns.PerSpec()).toBe(false)
+    OverpowerAlertDB.overpower.iconSize = 90
+    swapTo(2)
+    expect(OverpowerAlertDB.overpower.iconSize).toBe(90)
+    expect(OverpowerAlertDB.activeSpec).toBe(1)
+end
+
+@test("the second set starts as a copy, then each keeps its own")
+local function separate()
+    ns.SetPerSpec(true)
+    OverpowerAlertDB.overpower.iconSize = 90
+    swapTo(2)
+    expect(OverpowerAlertDB.activeSpec).toBe(2)
+    expect(OverpowerAlertDB.overpower.iconSize).toBe(90) -- copied
+    OverpowerAlertDB.overpower.iconSize = 120
+    OverpowerAlertDB.overpower.enabled = false
+    OverpowerAlertDB.general.iconLayout = "group"
+    swapTo(1)
+    expect(OverpowerAlertDB.overpower.iconSize).toBe(90)
+    expect(OverpowerAlertDB.overpower.enabled).toBe(true)
+    expect(OverpowerAlertDB.general.iconLayout).toBe("separate")
+    swapTo(2)
+    expect(OverpowerAlertDB.overpower.iconSize).toBe(120)
+    expect(OverpowerAlertDB.overpower.enabled).toBe(false)
+    expect(OverpowerAlertDB.general.iconLayout).toBe("group")
+end
+
+@test("a swap resizes the icon on screen")
+local function applies()
+    ns.SetPerSpec(true)
+    swapTo(2)
+    OverpowerAlertDB.overpower.iconSize = 120
+    ns.ApplyIconStyle("overpower")
+    swapTo(1)
+    expect(math.floor(_G["OverpowerAlertOverpowerIconFrame"]:GetWidth() + 0.5)).toBe(64)
+    swapTo(2)
+    expect(math.floor(_G["OverpowerAlertOverpowerIconFrame"]:GetWidth() + 0.5)).toBe(120)
+end
+
+@test("the font is shared by both sets")
+local function sharedFont()
+    ns.SetPerSpec(true)
+    swapTo(2)
+    OverpowerAlertDB.general.font = "Some Font"
+    swapTo(1)
+    expect(OverpowerAlertDB.general.font).toBe("Some Font")
+end
+
+@test("any of the swap events, or the spellbook changing, notices it")
+local function events()
+    ns.SetPerSpec(true)
+    swapTo(2, "SPELLS_CHANGED")
+    expect(OverpowerAlertDB.activeSpec).toBe(2)
+    swapTo(1, "PLAYER_TALENT_UPDATE")
+    expect(OverpowerAlertDB.activeSpec).toBe(1)
+end
+
+@test("turning it on while on the secondary set makes the settings that set's")
+local function enableOnSecondary()
+    specGroup = 2
+    OverpowerAlertDB.overpower.iconSize = 80
+    ns.SetPerSpec(true)
+    expect(OverpowerAlertDB.activeSpec).toBe(2)
+    swapTo(1)
+    expect(OverpowerAlertDB.overpower.iconSize).toBe(80) -- the primary set starts as a copy
+    OverpowerAlertDB.overpower.iconSize = 50
+    swapTo(2)
+    expect(OverpowerAlertDB.overpower.iconSize).toBe(80)
+end

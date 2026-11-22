@@ -184,6 +184,7 @@ function ns.ApplyTextStyle(abilityKey)
     local size = ns.Config(abilityKey).textSize or 36
     ns.SetFont(el.label, size, "THICKOUTLINE")
     ns.SetFont(el.countdown, size, "THICKOUTLINE")
+    el.label:SetText(ns.AlertText(abilityKey)) -- the player's own text, if any
     el.frame:SetSize(math.max(el.label:GetStringWidth(), size * 5) + 20, size + 16)
 end
 

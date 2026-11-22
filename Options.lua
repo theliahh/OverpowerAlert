@@ -54,6 +54,7 @@ local function CreateCheckbox(parent, label, abilityKey, key, anchor, yOff)
     local text = cb.Text or cb:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     text:SetPoint("LEFT", cb, "RIGHT", 4, 1)
     text:SetText(label)
+    cb.label = text
     cb:SetScript("OnShow", function(self) self:SetChecked(ns.Config(abilityKey)[key]) end)
     cb:SetScript("OnClick", function(self) ns.Config(abilityKey)[key] = self:GetChecked() and true or false end)
     return cb
@@ -334,7 +335,13 @@ local function BuildAbilityPage(content, ability)
         show:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -4, -6)
 
         local sizeLabel = Label(content, s.sizeLabel)
-        sizeLabel:SetPoint("TOPLEFT", show, "BOTTOMLEFT", 4, -12)
+        if s.buildExtra then
+            -- Extra controls between the checkbox and the size; returns the
+            -- last of them, lined up with the size label.
+            sizeLabel:SetPoint("TOPLEFT", s.buildExtra(show), "BOTTOMLEFT", 0, -12)
+        else
+            sizeLabel:SetPoint("TOPLEFT", show, "BOTTOMLEFT", 4, -12)
+        end
 
         -- A size slider (s.range = { min, max }) or a dropdown of set sizes.
         local sizeControl, gap
@@ -376,8 +383,38 @@ local function BuildAbilityPage(content, ability)
 
     local textSizeDD = BuildDisplaySection(channelDD, {
         kind = "text", unlockText = L.UNLOCK_TEXT, lockText = L.LOCK_TEXT, title = L.ONSCREEN_TEXT,
-        showLabel = L.SHOW_TEXT:format(ability.text), showKey = "showText",
+        showLabel = L.SHOW_TEXT:format(ns.AlertText(abilityKey)), showKey = "showText",
         sizeLabel = L.TEXT_SIZE, sizeKey = "textSize", sizes = TEXT_SIZES,
+        -- The player's own text in place of "OVERPOWER!" etc.
+        buildExtra = function(show)
+            local label = Label(content, L.CUSTOM_TEXT)
+            label:SetPoint("TOPLEFT", show, "BOTTOMLEFT", 4, -8)
+            local box = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+            box:SetSize(240, 22)
+            box:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 6, -4)
+            box:SetAutoFocus(false)
+            box:SetMaxLetters(ns.CUSTOM_TEXT_MAX)
+            local hint = Label(content, L.CUSTOM_TEXT_HINT:format(ability.text), "GameFontDisableSmall")
+            hint:SetPoint("LEFT", box, "RIGHT", 10, 0)
+            local function ShowLabel() show.label:SetText(L.SHOW_TEXT:format(ns.AlertText(abilityKey))) end
+            box:SetScript("OnShow", function(self) self:SetText(cfg().customText or ""); ShowLabel() end)
+            box:SetScript("OnTextChanged", function(self, userInput)
+                if not userInput then return end
+                cfg().customText = self:GetText()
+                ns.ApplyTextStyle(abilityKey) -- updates it on screen if it's up
+                ShowLabel()
+            end)
+            box:SetScript("OnEnterPressed", function(self)
+                self:ClearFocus()
+                if not ns.IsUnlocked(abilityKey, "text") then ns.ShowText(abilityKey) end
+            end)
+            box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+            -- Something lined up with the label, under the box.
+            local below = CreateFrame("Frame", nil, content)
+            below:SetSize(1, 1)
+            below:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -6, 0)
+            return below
+        end,
         applyStyle = function() ns.ApplyTextStyle(abilityKey) end,
         preview = function() ns.ShowText(abilityKey) end,
     })
@@ -748,7 +785,7 @@ function ns.CreateOptions()
 
     refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 620))
     for _, ability in ipairs(ns.ABILITIES) do
-        refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1520), ability)
+        refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1570), ability)
     end
 
     panel:SetScript("OnShow", function() SelectTab(selected) end)

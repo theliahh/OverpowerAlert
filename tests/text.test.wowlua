@@ -1,0 +1,60 @@
+-- The on-screen text: each ability's default ("OVERPOWER!"), or the player's own.
+import test, afterEach, expect, config from "wowlua:test"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local function shownText(ability)
+    -- The alert text among the text frame's font strings: not the move hint,
+    -- nor the (empty) countdown.
+    local frame = _G["OverpowerAlert" .. ability .. "TextFrame"]
+    for _, region in ipairs({ frame:GetRegions() }) do
+        local text = region.GetText and region:GetText()
+        if text and text ~= "" and not text:find("drag to move") then return text end
+    end
+end
+
+local function setText(key, text)
+    OverpowerAlertDB[key].customText = text
+    ns.ApplyTextStyle(key)
+end
+
+@afterEach
+local function reset()
+    setText("overpower", "")
+    setText("revenge", "")
+end
+
+@test("empty by default: each ability's own text")
+local function default()
+    expect(OverpowerAlertDB.overpower.customText).toBe("")
+    expect(shownText("Overpower")).toBe("OVERPOWER!")
+    expect(shownText("Revenge")).toBe("REVENGE!")
+end
+
+@test("the player's own text replaces it, for that ability only")
+local function custom()
+    setText("overpower", "SMASH NOW")
+    expect(shownText("Overpower")).toBe("SMASH NOW")
+    expect(shownText("Revenge")).toBe("REVENGE!")
+    ns.ShowText("overpower")
+    expect(_G["OverpowerAlertOverpowerTextFrame"]).toBeShown()
+    expect(shownText("Overpower")).toBe("SMASH NOW")
+end
+
+@test("spaces around it are dropped, and only spaces means the default")
+local function spaces()
+    setText("revenge", "  Block it!  ")
+    expect(shownText("Revenge")).toBe("Block it!")
+    setText("revenge", "   ")
+    expect(shownText("Revenge")).toBe("REVENGE!")
+end
+
+@test("a long text makes the frame wide enough for it")
+local function wide()
+    local frame = _G["OverpowerAlertOverpowerTextFrame"]
+    local before = frame:GetWidth()
+    setText("overpower", "OVERPOWER IS UP, GO GO GO GO GO GO")
+    expect(frame:GetWidth() > before).toBe(true)
+end

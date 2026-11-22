@@ -96,6 +96,7 @@ local function Defaults(ability)
         channel = "Master",
         stances = stances,
         showText = ability.defaults.showText ~= false,
+        customText = "",           -- shown instead of the ability's text; empty = the default
         textSize = 36,
         textPos = nil, -- { point, relPoint, x, y }; nil = default spot
         showIcon = true,
@@ -122,6 +123,19 @@ ns.ICON_SIZE_MIN, ns.ICON_SIZE_MAX = 10, 200
 -- Settings for one ability.
 function ns.Config(abilityKey)
     return OverpowerAlertDB[abilityKey]
+end
+
+ns.CUSTOM_TEXT_MAX = 40 -- letters
+
+-- The on-screen text for an ability: the player's own, or its default
+-- ("OVERPOWER!") when theirs is empty or only spaces.
+function ns.AlertText(abilityKey)
+    local custom = OverpowerAlertDB[abilityKey].customText
+    if type(custom) == "string" then
+        custom = custom:match("^%s*(.-)%s*$")
+        if custom ~= "" then return custom end
+    end
+    return ns.ABILITY_BY_KEY[abilityKey].text
 end
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)

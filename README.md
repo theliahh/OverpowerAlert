@@ -50,7 +50,7 @@ There's also a tab for each ability, and every setting below is set separately f
 
   Choosing a sound plays it, so you can try several in a row.
 - **Sound channel:** Master, Sound Effects, Dialog, Ambience or Music.
-- **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size.
+- **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size. Type your own text in the **Text** box to show instead (up to 40 letters; press Enter to preview it). Leave it empty for the default.
 - **Spell icon** (on by default): pops up the ability's icon. Set its size with the slider, or type it into the box beside it (10 to 200 pixels; 64 by default) and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
 - **Tint blue when short on rage** (off by default): the icon turns blue, like an action button, while you don't have enough rage to cast the ability. The game only reports this in a stance the ability can be cast in (Battle Stance for Overpower, Defensive for Revenge), so in other stances the icon stays its normal colour.
 - **Icon on the nameplate** (on by default for Overpower, off for the others): attaches the icon to your target's nameplate instead of a fixed spot, so it moves with the target. Choose the side (above, below, left or right; above by default) and an X/Y offset in pixels from that side.

@@ -151,6 +151,8 @@ L.SIZE_MASSIVE = "Massive"
 
 L.ONSCREEN_TEXT = "On-screen text"
 L.SHOW_TEXT = "Show \"%s\" on screen"          -- %s: the alert text, e.g. OVERPOWER!
+L.CUSTOM_TEXT = "Text"
+L.CUSTOM_TEXT_HINT = "Type your own, or leave it empty for %s" -- %s: the default text, e.g. OVERPOWER!
 L.TEXT_SIZE = "Text size"
 L.UNLOCK_TEXT = "Unlock Text"
 L.LOCK_TEXT = "Lock Text"

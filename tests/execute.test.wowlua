@@ -22,7 +22,7 @@ local function setup()
         if id == EXECUTE then return usable, false end
         return false, false
     end)
-    OverpowerAlertDB.execute.enabled = true
+    ns.Config("execute").enabled = true
     mock.player:enterCombat()
 end
 
@@ -47,9 +47,9 @@ end
 @test("off by default, with no sound or text")
 local function defaults()
     -- The profile's saved settings start from the defaults; check what they were.
-    expect(OverpowerAlertDB.execute.sound).toBe("NONE")
-    expect(OverpowerAlertDB.execute.showText).toBe(false)
-    OverpowerAlertDB.execute.enabled = false
+    expect(ns.Config("execute").sound).toBe("NONE")
+    expect(ns.Config("execute").showText).toBe(false)
+    ns.Config("execute").enabled = false
     setUsable(true)
     expect(icon()).never.toBeShown()
 end
@@ -133,7 +133,7 @@ local function body()
 end
 
 local function defensive(alpha)
-    OverpowerAlertDB.execute.stances.defensive = true
+    ns.Config("execute").stances.defensive = true
     mock.stub(ns, "ExecuteAlpha", function() return alpha.value end)
     stance = 2
     mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
@@ -154,7 +154,7 @@ local function watchDefensive()
     expect(icon()).toBeShown()
     expect(alerts()).toBe(0) -- no sound or text
     expect(_G["OverpowerAlertExecuteTextFrame"]).never.toBeShown()
-    OverpowerAlertDB.execute.stances.defensive = false
+    ns.Config("execute").stances.defensive = false
 end
 
 @test("Defensive Stance, not ticked: nothing")
@@ -176,7 +176,7 @@ local function watchToBattle()
     expect(alerts()).toBe(1)
     expect(icon()).toBeShown()
     expect(body():GetAlpha()).toBe(1)
-    OverpowerAlertDB.execute.stances.defensive = false
+    ns.Config("execute").stances.defensive = false
 end
 
 @test("from watching to Battle Stance above 20%: it goes")
@@ -187,7 +187,7 @@ local function watchToBattleAbove()
     mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
     mock.waitSeconds(2.5)
     expect(icon()).never.toBeShown()
-    OverpowerAlertDB.execute.stances.defensive = false
+    ns.Config("execute").stances.defensive = false
 end
 
 @test("switching to Defensive Stance keeps it up")

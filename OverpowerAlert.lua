@@ -120,17 +120,12 @@ end
 -- The icon size slider's range, in pixels.
 ns.ICON_SIZE_MIN, ns.ICON_SIZE_MAX = 10, 200
 
--- Settings for one ability.
-function ns.Config(abilityKey)
-    return OverpowerAlertDB[abilityKey]
-end
-
 ns.CUSTOM_TEXT_MAX = 40 -- letters
 
 -- The on-screen text for an ability: the player's own, or its default
 -- ("OVERPOWER!") when theirs is empty or only spaces.
 function ns.AlertText(abilityKey)
-    local custom = OverpowerAlertDB[abilityKey].customText
+    local custom = ns.Config(abilityKey).customText
     if type(custom) == "string" then
         custom = custom:match("^%s*(.-)%s*$")
         if custom ~= "" then return custom end
@@ -152,18 +147,14 @@ ns.GROUP_GROW = {
     VCENTER = { 0, -1, centered = true },
 }
 
--- Settings shared by every ability (the General tab).
-function ns.General()
-    return OverpowerAlertDB.general
-end
-
 -- The font for the alert text and the countdown numbers: the game's standard
 -- font ("DEFAULT"), or one registered with LibSharedMedia, saved by name. A
 -- font whose addon is gone falls back to the standard one.
 local DEFAULT_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 
 function ns.GetFontPath()
-    local name = OverpowerAlertDB and OverpowerAlertDB.general and OverpowerAlertDB.general.font
+    local ok, general = pcall(ns.General) -- nil before the settings load
+    local name = ok and general and general.font
     if LSM and type(name) == "string" and name ~= "DEFAULT" then
         local ok, path = pcall(LSM.Fetch, LSM, "font", name, true)
         if ok and type(path) == "string" then return path end
@@ -347,91 +338,49 @@ function ns.PreviewAlert(abilityKey)
 end
 
 --------------------------------------------------------------------------------
--- Saved variables
+-- Saved variables and profiles
 --
--- Up to 1.1.x, OverpowerAlertDB held Overpower's settings directly. It now
--- holds one table per ability.
+-- OverpowerAlertDB is account-wide:
+--   profiles[name]          every setting: `general` plus one table per ability
+--   chars["Name - Realm"]   { profile, perSpec, specProfile = { [1], [2] } }:
+--                           the profile each character uses, or with perSpec
+--                           on, the one each talent set uses
+--   legacyPerSpec           the old talent-set option's mapping, handed to each
+--                           character on its first load after the upgrade
+--   dbVersion               2 once upgraded
+-- ns.Config and ns.General read the active profile. "Default" always exists.
+--
+-- Before profiles (dbVersion missing) the settings were at the top level:
+-- one table per ability plus `general`, and with the old talent-set option
+-- on (perSpec) the other set's copy in specProfiles[n]. The upgrade copies
+-- them into profiles and leaves the old tables as they were, so going back
+-- to an older version still finds them. Up to 1.1.x the top level held
+-- Overpower's settings directly.
 --------------------------------------------------------------------------------
+
+local DB_VERSION = 2
+local DEFAULT_PROFILE = "Default"
+local PROFILE_NAME_MAX = 32
+
+ns.DEFAULT_PROFILE = DEFAULT_PROFILE
+ns.PROFILE_NAME_MAX = PROFILE_NAME_MAX
 
 local LEGACY_KEYS = {
     "enabled", "sound", "customSound", "channel", "anyStance", "throttle",
     "showText", "textSize", "textPos", "showIcon", "iconSize", "iconGlow", "iconPos",
 }
 
-local function LoadSettings()
-    local db = OverpowerAlertDB or {}
-    OverpowerAlertDB = db
+-- The General tab's settings and their defaults (positions aside).
+local GENERAL_DEFAULTS = {
+    font = "DEFAULT",
+    iconLayout = "separate", -- or "group": side by side, growing from one spot
+    groupGrow = "RIGHT",
+    groupSpacing = 6,
+}
 
-    if not db.overpower and db.sound ~= nil then
-        local old = {}
-        for _, k in ipairs(LEGACY_KEYS) do
-            old[k] = db[k]
-            db[k] = nil
-        end
-        db.overpower = old
-    end
+local CHANNELS = { Master = true, SFX = true, Dialog = true, Ambience = true, Music = true }
 
-    if type(db.general) ~= "table" then db.general = {} end
-    if type(db.general.font) ~= "string" then db.general.font = "DEFAULT" end
-    -- Icons: "separate" (each ability's icon at its own spot) or "group" (all
-    -- of them side by side, growing from one spot).
-    if db.general.iconLayout ~= "group" then db.general.iconLayout = "separate" end
-    if not ns.GROUP_GROW[db.general.groupGrow] then db.general.groupGrow = "RIGHT" end
-    if type(db.general.groupSpacing) ~= "number" then db.general.groupSpacing = 6 end
-
-    for _, ability in ipairs(ns.ABILITIES) do
-        local cfg = db[ability.key] or {}
-        db[ability.key] = cfg
-        -- Before per-stance settings there was one "any stance" checkbox;
-        -- ticked meant every stance.
-        if cfg.stances == nil and cfg.anyStance then
-            cfg.stances = { battle = true, defensive = true, berserker = true }
-        end
-        cfg.anyStance = nil
-        -- The nameplate icon used to have a single gap away from its side.
-        if cfg.nameplateGap ~= nil and cfg.nameplateX == nil then
-            local gap = tonumber(cfg.nameplateGap) or 0
-            local side = cfg.nameplateSide
-            cfg.nameplateX = side == "LEFT" and -gap or side == "RIGHT" and gap or 0
-            cfg.nameplateY = side == "BOTTOM" and -gap or (side == "LEFT" or side == "RIGHT") and 0 or gap
-        end
-        cfg.nameplateGap = nil
-        local defaults = Defaults(ability)
-        for k, v in pairs(defaults) do
-            if cfg[k] == nil then cfg[k] = v end
-        end
-        for _, stance in ipairs(ns.STANCES) do
-            if type(cfg.stances[stance.key]) ~= "boolean" then
-                cfg.stances[stance.key] = defaults.stances[stance.key]
-            end
-        end
-        -- Older versions offered a different built-in list (SOUNDKIT names);
-        -- move those selections to the default.
-        if not ns.IsValidSoundKey(cfg.sound) then cfg.sound = ability.defaults.sound end
-        -- A whole number of pixels within the slider's range.
-        local size = tonumber(cfg.iconSize) or defaults.iconSize
-        cfg.iconSize = math.max(ns.ICON_SIZE_MIN, math.min(ns.ICON_SIZE_MAX, math.floor(size + 0.5)))
-    end
-
-    -- Talent set profiles (below).
-    db.perSpec = db.perSpec == true
-    if type(db.activeSpec) ~= "number" then db.activeSpec = 1 end
-    if type(db.specProfiles) ~= "table" then db.specProfiles = {} end
-end
-
---------------------------------------------------------------------------------
--- Talent set profiles
---
--- With "perSpec" on, each talent set (primary, secondary) has its own
--- settings. The live ones above (OverpowerAlertDB[abilityKey] and .general)
--- belong to the set in use, db.activeSpec; the other set's wait in
--- db.specProfiles[n] until the player swaps. The font is shared. The game
--- only tells addons which set is in use (1 or 2), not the talents in it.
---
--- Untested with real secondary talents: the set is checked on every event a
--- swap could send (SPELLS_CHANGED included, as the spellbook changes).
---------------------------------------------------------------------------------
-
+-- Every top-level key of a profile.
 local PROFILE_KEYS = { "general" }
 for _, ability in ipairs(ns.ABILITIES) do PROFILE_KEYS[#PROFILE_KEYS + 1] = ability.key end
 
@@ -441,6 +390,373 @@ local function DeepCopy(t)
     for k, v in pairs(t) do copy[k] = DeepCopy(v) end
     return copy
 end
+
+-- A finite number within lo..hi, or `default`.
+local function Clamp(v, lo, hi, default)
+    v = tonumber(v)
+    if not v or v ~= v or v == math.huge or v == -math.huge then return default end
+    return math.max(lo, math.min(hi, v))
+end
+
+local function NormalizeGeneral(general)
+    if type(general) ~= "table" then general = {} end
+    if type(general.font) ~= "string" then general.font = GENERAL_DEFAULTS.font end
+    if general.iconLayout ~= "group" then general.iconLayout = "separate" end
+    if not ns.GROUP_GROW[general.groupGrow] then general.groupGrow = GENERAL_DEFAULTS.groupGrow end
+    general.groupSpacing = Clamp(general.groupSpacing, -500, 500, GENERAL_DEFAULTS.groupSpacing)
+    return general
+end
+
+local function NormalizeAbility(ability, cfg)
+    if type(cfg) ~= "table" then cfg = {} end
+    -- Before per-stance settings there was one "any stance" checkbox; ticked
+    -- meant every stance.
+    if cfg.stances == nil and cfg.anyStance then
+        cfg.stances = { battle = true, defensive = true, berserker = true }
+    end
+    cfg.anyStance = nil
+    -- The nameplate icon used to have a single gap away from its side.
+    if cfg.nameplateGap ~= nil and cfg.nameplateX == nil then
+        local gap = tonumber(cfg.nameplateGap) or 0
+        local side = cfg.nameplateSide
+        cfg.nameplateX = side == "LEFT" and -gap or side == "RIGHT" and gap or 0
+        cfg.nameplateY = side == "BOTTOM" and -gap or (side == "LEFT" or side == "RIGHT") and 0 or gap
+    end
+    cfg.nameplateGap = nil
+    local defaults = Defaults(ability)
+    for k, v in pairs(defaults) do
+        if cfg[k] == nil then cfg[k] = v end
+    end
+    if type(cfg.stances) ~= "table" then cfg.stances = {} end
+    for _, stance in ipairs(ns.STANCES) do
+        if type(cfg.stances[stance.key]) ~= "boolean" then
+            cfg.stances[stance.key] = defaults.stances[stance.key]
+        end
+    end
+    -- Older versions offered a different built-in list (SOUNDKIT names); move
+    -- those selections to the default.
+    if not ns.IsValidSoundKey(cfg.sound) then cfg.sound = ability.defaults.sound end
+    if not CHANNELS[cfg.channel] then cfg.channel = defaults.channel end
+    -- A whole number of pixels within the slider's range.
+    cfg.iconSize = math.floor(Clamp(cfg.iconSize, ns.ICON_SIZE_MIN, ns.ICON_SIZE_MAX, defaults.iconSize) + 0.5)
+    cfg.textSize = Clamp(cfg.textSize, 8, 128, defaults.textSize)
+    cfg.nameplateX = Clamp(cfg.nameplateX, -500, 500, defaults.nameplateX)
+    cfg.nameplateY = Clamp(cfg.nameplateY, -500, 500, defaults.nameplateY)
+    if type(cfg.customText) ~= "string" then cfg.customText = "" end
+    cfg.customText = cfg.customText:sub(1, ns.CUSTOM_TEXT_MAX)
+    return cfg
+end
+
+-- Fills in and checks every setting of a profile, in place.
+local function NormalizeProfile(profile)
+    if type(profile) ~= "table" then profile = {} end
+    profile.general = NormalizeGeneral(profile.general)
+    for _, ability in ipairs(ns.ABILITIES) do
+        profile[ability.key] = NormalizeAbility(ability, profile[ability.key])
+    end
+    return profile
+end
+
+-- A profile made from a table holding the profile keys (a deep copy).
+local function ProfileFrom(t)
+    local profile = {}
+    for _, k in ipairs(PROFILE_KEYS) do profile[k] = DeepCopy(t[k]) end
+    return profile
+end
+
+-- One-time move from the old top-level layout into profiles.
+local function Upgrade(db)
+    if type(db.dbVersion) == "number" and db.dbVersion >= DB_VERSION then return end
+    if not db.overpower and db.sound ~= nil then
+        local old = {}
+        for _, k in ipairs(LEGACY_KEYS) do
+            old[k] = db[k]
+            db[k] = nil
+        end
+        db.overpower = old
+    end
+    if type(db.profiles) ~= "table" then db.profiles = {} end
+    -- The live top-level settings belong to the talent set in activeSpec. A
+    -- stored other set only counts if the option was on: turning it off left
+    -- the old copy behind.
+    local live = ProfileFrom(db)
+    local stored
+    if db.perSpec == true and type(db.specProfiles) == "table" then
+        local other = db.activeSpec == 2 and 1 or 2
+        if type(db.specProfiles[other]) == "table" then
+            stored = ProfileFrom(db.specProfiles[other])
+            -- The font was shared by both sets, but the stored copy kept the
+            -- font from its last swap; give it the one in use.
+            local font = type(live.general) == "table" and live.general.font or nil
+            if type(stored.general) ~= "table" then stored.general = {} end
+            stored.general.font = font
+        end
+    end
+    if stored then
+        local secondary = L.PROFILE_SECONDARY_TALENTS
+        if db.activeSpec == 2 then
+            db.profiles[DEFAULT_PROFILE], db.profiles[secondary] = stored, live
+        else
+            db.profiles[DEFAULT_PROFILE], db.profiles[secondary] = live, stored
+        end
+        db.legacyPerSpec = { primary = DEFAULT_PROFILE, secondary = secondary }
+    else
+        db.profiles[DEFAULT_PROFILE] = live
+        if db.perSpec == true then
+            db.legacyPerSpec = { primary = DEFAULT_PROFILE, secondary = DEFAULT_PROFILE }
+        end
+    end
+    db.dbVersion = DB_VERSION
+end
+
+local db                 -- OverpowerAlertDB as loaded
+local active, activeName -- the profile in use, and its name
+local charEntry          -- this character's entry in db.chars
+local unsavedEntry       -- stands in until the character's name is known
+
+-- "Name - Realm", or nil while the game doesn't know the character yet.
+local function CharKey()
+    local name = UnitName("player")
+    local realm = GetRealmName and GetRealmName()
+    if type(name) ~= "string" or name == "" or name == UNKNOWNOBJECT then return nil end
+    if type(realm) ~= "string" or realm == "" then return nil end
+    return name .. " - " .. realm
+end
+
+local function ProfileExists(name)
+    return type(name) == "string" and type(db.profiles[name]) == "table"
+end
+
+local function FixEntry(entry)
+    if not ProfileExists(entry.profile) then entry.profile = DEFAULT_PROFILE end
+    entry.perSpec = entry.perSpec == true
+    if type(entry.specProfile) ~= "table" then entry.specProfile = {} end
+    for group = 1, 2 do
+        if not ProfileExists(entry.specProfile[group]) then entry.specProfile[group] = entry.profile end
+    end
+    return entry
+end
+
+local function NewEntry()
+    local legacy = db.legacyPerSpec
+    if type(legacy) == "table" then
+        return { profile = legacy.primary, perSpec = true, specProfile = { legacy.primary, legacy.secondary } }
+    end
+    return { profile = DEFAULT_PROFILE, perSpec = false, specProfile = { DEFAULT_PROFILE, DEFAULT_PROFILE } }
+end
+
+local function Entry()
+    if charEntry then return charEntry end
+    local key = CharKey()
+    if not key then
+        unsavedEntry = unsavedEntry or FixEntry(NewEntry())
+        return unsavedEntry
+    end
+    if type(db.chars[key]) ~= "table" then db.chars[key] = unsavedEntry or NewEntry() end
+    unsavedEntry = nil
+    charEntry = FixEntry(db.chars[key])
+    return charEntry
+end
+
+-- The profile this character should be using now.
+local function ResolveName()
+    local entry = FixEntry(Entry())
+    if entry.perSpec then
+        return entry.specProfile[ns.ActiveSpecGroup() or 1]
+    end
+    return entry.profile
+end
+
+local function LoadSettings()
+    db = OverpowerAlertDB
+    if type(db) ~= "table" then db = {} end
+    OverpowerAlertDB = db
+    Upgrade(db)
+    for name, profile in pairs(db.profiles) do
+        if type(name) ~= "string" or type(profile) ~= "table" then
+            db.profiles[name] = nil
+        else
+            NormalizeProfile(profile)
+        end
+    end
+    if type(db.profiles[DEFAULT_PROFILE]) ~= "table" then db.profiles[DEFAULT_PROFILE] = NormalizeProfile({}) end
+    if type(db.chars) ~= "table" then db.chars = {} end
+    activeName = ResolveName()
+    active = db.profiles[activeName]
+end
+
+-- Settings for one ability, from the active profile.
+function ns.Config(abilityKey)
+    return active[abilityKey]
+end
+
+-- Settings shared by every ability (the General tab), from the active profile.
+function ns.General()
+    return active.general
+end
+
+-- Re-reads which profile is in use and, if it changed, applies it on screen
+-- and on the options page. `refresh` also reloads the options page when it
+-- didn't (a rename or a delete changes the names shown). Returns whether it
+-- changed.
+local function Reapply(refresh)
+    local name = ResolveName()
+    local profile = db.profiles[name]
+    activeName = name
+    if profile == active then
+        if refresh and ns.RefreshOptions then ns.RefreshOptions() end
+        return false
+    end
+    active = profile
+    if ns.ApplySettings then ns.ApplySettings() end
+    if ns.RefreshOptions then ns.RefreshOptions() end
+    return true
+end
+
+--------------------------------------------------------------------------------
+-- Profile operations (General tab). Each returns true, or nil and the reason
+-- to show the player.
+--------------------------------------------------------------------------------
+
+function ns.ActiveProfileName()
+    return activeName
+end
+
+-- Every profile name, "Default" first, then alphabetically.
+function ns.ProfileNames()
+    local names = {}
+    for name in pairs(db.profiles) do
+        if name ~= DEFAULT_PROFILE then names[#names + 1] = name end
+    end
+    table.sort(names, function(a, b) return a:lower() < b:lower() end)
+    table.insert(names, 1, DEFAULT_PROFILE)
+    return names
+end
+
+local function Trim(s)
+    return type(s) == "string" and s:match("^%s*(.-)%s*$") or ""
+end
+
+-- A usable new name: trimmed, 1 to 32 letters, not taken (case aside).
+-- `except` is the profile being renamed, which may keep its own name.
+local function CheckName(name, except)
+    name = Trim(name)
+    if name == "" then return nil, L.PROFILE_NAME_EMPTY end
+    if #name > PROFILE_NAME_MAX then return nil, L.PROFILE_NAME_LONG:format(PROFILE_NAME_MAX) end
+    for existing in pairs(db.profiles) do
+        if existing ~= except and existing:lower() == name:lower() then
+            return nil, L.PROFILE_NAME_TAKEN:format(existing)
+        end
+    end
+    return name
+end
+
+-- `name`, or "name (2)", "name (3)", ... when taken.
+local function UniqueName(name)
+    name = Trim(name):sub(1, PROFILE_NAME_MAX)
+    if name == "" then name = L.PROFILE_IMPORTED end
+    if CheckName(name) then return name end
+    for i = 2, 999 do
+        local suffix = " (" .. i .. ")"
+        local candidate = name:sub(1, PROFILE_NAME_MAX - #suffix) .. suffix
+        if CheckName(candidate) then return candidate end
+    end
+end
+
+-- Uses `name` from now on: for the current talent set when the talent-set
+-- option is on.
+function ns.SetProfile(name)
+    if not ProfileExists(name) then return nil, L.PROFILE_MISSING end
+    local entry = Entry()
+    if entry.perSpec then
+        entry.specProfile[ns.ActiveSpecGroup() or 1] = name
+    else
+        entry.profile = name
+    end
+    Reapply(true)
+    return true
+end
+
+local function AddProfile(name, profile)
+    local checked, reason = CheckName(name)
+    if not checked then return nil, reason end
+    db.profiles[checked] = profile
+    ns.SetProfile(checked)
+    return true
+end
+
+-- A new profile with default settings, switched to.
+function ns.NewProfile(name)
+    return AddProfile(name, NormalizeProfile({}))
+end
+
+-- A copy of the active profile under a new name, switched to.
+function ns.CopyProfile(name)
+    return AddProfile(name, DeepCopy(active))
+end
+
+-- Calls fn(holder, key) for every saved reference to a profile name.
+local function EachReference(fn)
+    for _, entry in pairs(db.chars) do
+        if type(entry) == "table" then
+            fn(entry, "profile")
+            if type(entry.specProfile) == "table" then
+                fn(entry.specProfile, 1)
+                fn(entry.specProfile, 2)
+            end
+        end
+    end
+    if unsavedEntry then
+        fn(unsavedEntry, "profile")
+        fn(unsavedEntry.specProfile, 1)
+        fn(unsavedEntry.specProfile, 2)
+    end
+    if type(db.legacyPerSpec) == "table" then
+        fn(db.legacyPerSpec, "primary")
+        fn(db.legacyPerSpec, "secondary")
+    end
+end
+
+function ns.RenameProfile(old, new)
+    if old == DEFAULT_PROFILE then return nil, L.PROFILE_DEFAULT_FIXED end
+    if not ProfileExists(old) then return nil, L.PROFILE_MISSING end
+    local checked, reason = CheckName(new, old)
+    if not checked then return nil, reason end
+    db.profiles[checked], db.profiles[old] = db.profiles[old], nil
+    EachReference(function(holder, key)
+        if holder[key] == old then holder[key] = checked end
+    end)
+    Reapply(true)
+    return true
+end
+
+-- Deletes a profile; whoever used it uses "Default" instead.
+function ns.DeleteProfile(name)
+    if name == DEFAULT_PROFILE then return nil, L.PROFILE_DEFAULT_FIXED end
+    if not ProfileExists(name) then return nil, L.PROFILE_MISSING end
+    db.profiles[name] = nil
+    EachReference(function(holder, key)
+        if holder[key] == name then holder[key] = DEFAULT_PROFILE end
+    end)
+    Reapply(true)
+    return true
+end
+
+-- Puts the active profile back to default settings.
+function ns.ResetProfile()
+    db.profiles[activeName] = NormalizeProfile({})
+    active = nil -- so Reapply applies it
+    Reapply()
+    return true
+end
+
+--------------------------------------------------------------------------------
+-- Talent sets: with the option on, each talent set uses its own profile. The
+-- game only tells addons which set is in use (1 or 2), not the talents in it.
+--
+-- Untested with real secondary talents: the set is checked on every event a
+-- swap could send (SPELLS_CHANGED included, as the spellbook changes).
+--------------------------------------------------------------------------------
 
 -- The talent set in use (1 primary, 2 secondary), or nil if unknown.
 -- Forever has C_SpecializationInfo's (confirmed in game: 1 on primary); older
@@ -461,48 +777,158 @@ function ns.SpecName(group)
 end
 
 function ns.PerSpec()
-    return OverpowerAlertDB.perSpec
+    return Entry().perSpec
 end
 
--- Puts away the live settings as the current set's and makes `group`'s live:
--- its own if it has them, otherwise a copy of the current set's.
-local function SwitchToSpec(group)
-    local db = OverpowerAlertDB
-    local from = db.activeSpec
-    local outgoing = {}
-    for _, k in ipairs(PROFILE_KEYS) do outgoing[k] = db[k] end
-    local incoming = db.specProfiles[group]
-    db.specProfiles[from] = outgoing
-    db.specProfiles[group] = nil
-    for _, k in ipairs(PROFILE_KEYS) do
-        if incoming then db[k] = incoming[k] else db[k] = DeepCopy(outgoing[k]) end
+-- The profile a talent set uses (with the option on).
+function ns.SpecProfile(group)
+    return FixEntry(Entry()).specProfile[group]
+end
+
+function ns.SetSpecProfile(group, name)
+    if not ProfileExists(name) then return nil, L.PROFILE_MISSING end
+    Entry().specProfile[group] = name
+    Reapply(true)
+    return true
+end
+
+-- Turns the talent-set option on or off. Either way the profile in use stays
+-- in use: turning it on gives it to both sets.
+function ns.SetPerSpec(on)
+    local entry = Entry()
+    entry.perSpec = on and true or false
+    if on then
+        entry.specProfile[1], entry.specProfile[2] = activeName, activeName
+    else
+        entry.profile = activeName
     end
-    db.activeSpec = group
-    LoadSettings() -- fills in anything missing
-    db.general.font = outgoing.general.font -- shared by both
+    Reapply(true)
 end
 
--- Swaps settings if the player is now on the other talent set.
+-- Switches profile if the talent set in use now has a different one. Also
+-- picks up the character's own entry once its name is known.
 function ns.CheckSpec()
     if ns.RefreshCurrentSet then ns.RefreshCurrentSet() end -- the General tab shows it
-    if not ns.PerSpec() then return end
-    local group = ns.ActiveSpecGroup()
-    if not group or group == OverpowerAlertDB.activeSpec then return end
-    SwitchToSpec(group)
-    if ns.ApplySettings then ns.ApplySettings() end
-    if ns.RefreshOptions then ns.RefreshOptions() end
-    print("|cffff6619" .. L.ADDON_TITLE .. "|r " .. L.SPEC_SWITCHED:format(ns.SpecName(group)))
+    if Reapply() and Entry().perSpec then
+        print("|cffff6619" .. L.ADDON_TITLE .. "|r "
+            .. L.SPEC_SWITCHED:format(activeName, ns.SpecName(ns.ActiveSpecGroup() or 1)))
+    end
 end
 
--- Turns separate settings per talent set on or off. Either way the settings
--- in use stay as they are: turning it on makes them the current set's.
-function ns.SetPerSpec(on)
-    local db = OverpowerAlertDB
-    db.perSpec = on and true or false
-    if on then
-        db.activeSpec = ns.ActiveSpecGroup() or 1
-        db.specProfiles[db.activeSpec] = nil
+--------------------------------------------------------------------------------
+-- Export and import: a profile as a text string. "!OPA1!" (the addon and the
+-- format version) then Base64 of the Deflate-compressed CBOR of
+-- { v = 1, name = <profile name>, data = <profile> }, all with the game's own
+-- C_EncodingUtil. An import is rebuilt from defaults, copying only known
+-- settings of the right type, so a string can't carry anything else.
+--------------------------------------------------------------------------------
+
+local EXPORT_VERSION = 1
+local EXPORT_PREFIX = "!OPA" .. EXPORT_VERSION .. "!"
+local IMPORT_MAX = 64 * 1024 -- characters
+
+local ANCHOR_POINTS = {
+    TOPLEFT = true, TOP = true, TOPRIGHT = true, LEFT = true, CENTER = true,
+    RIGHT = true, BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true,
+}
+
+local function Deflate()
+    return Enum and Enum.CompressionMethod and Enum.CompressionMethod.Deflate
+end
+
+-- A saved position { point, relPoint, x, y }, or nil if it isn't one.
+local function CleanPosition(pos)
+    if type(pos) ~= "table" then return nil end
+    if not (ANCHOR_POINTS[pos[1]] and ANCHOR_POINTS[pos[2]]) then return nil end
+    local x, y = Clamp(pos[3], -10000, 10000, nil), Clamp(pos[4], -10000, 10000, nil)
+    if not (x and y) then return nil end
+    return { pos[1], pos[2], x, y }
+end
+
+-- The settings in `src` that `defaults` knows, with the default's type.
+-- Tables (stances) are checked one level down. `positions` are copied when
+-- they are valid positions.
+local function CopyKnown(defaults, src, positions)
+    if type(src) ~= "table" then src = {} end
+    local out = {}
+    for k, default in pairs(defaults) do
+        local v = src[k]
+        if type(default) == "table" then
+            out[k] = {}
+            if type(v) == "table" then
+                for sub, subDefault in pairs(default) do
+                    if type(v[sub]) == type(subDefault) then out[k][sub] = v[sub] end
+                end
+            end
+        elseif v ~= nil and type(v) == type(default) then
+            out[k] = v
+        end
     end
+    for _, k in ipairs(positions) do out[k] = CleanPosition(src[k]) end
+    return out
+end
+
+local function RebuildProfile(data)
+    local profile = { general = CopyKnown(GENERAL_DEFAULTS, data.general, { "groupPos" }) }
+    for _, ability in ipairs(ns.ABILITIES) do
+        profile[ability.key] = CopyKnown(Defaults(ability), data[ability.key], { "textPos", "iconPos" })
+    end
+    return NormalizeProfile(profile)
+end
+
+function ns.ExportProfile()
+    local E = C_EncodingUtil
+    local ok, text = pcall(function()
+        local cbor = E.SerializeCBOR({ v = EXPORT_VERSION, name = activeName, data = active })
+        return EXPORT_PREFIX .. E.EncodeBase64(E.CompressString(cbor, Deflate()))
+    end)
+    if not ok or type(text) ~= "string" then return nil, L.EXPORT_FAILED end
+    return text
+end
+
+-- The payload in an export string, or nil and the reason it isn't one.
+local function Decode(text)
+    if type(text) ~= "string" then return nil, L.IMPORT_EMPTY end
+    text = text:gsub("%s", "") -- pasting can wrap or pad it
+    if text == "" then return nil, L.IMPORT_EMPTY end
+    if #text > IMPORT_MAX then return nil, L.IMPORT_TOO_LONG end
+    local version, body = text:match("^!OPA(%d+)!(.*)$")
+    if not version then return nil, L.IMPORT_NOT_PROFILE end
+    if tonumber(version) > EXPORT_VERSION then return nil, L.IMPORT_NEWER end
+    if tonumber(version) ~= EXPORT_VERSION then return nil, L.IMPORT_NOT_PROFILE end
+    local E = C_EncodingUtil
+    local ok, payload = pcall(function()
+        local compressed = E.DecodeBase64(body)
+        if type(compressed) ~= "string" or compressed == "" then return nil end
+        local cbor = E.DecompressString(compressed, Deflate())
+        if type(cbor) ~= "string" or cbor == "" then return nil end
+        return E.DeserializeCBOR(cbor)
+    end)
+    if not ok or type(payload) ~= "table" or payload.v ~= EXPORT_VERSION or type(payload.data) ~= "table" then
+        return nil, L.IMPORT_DAMAGED
+    end
+    return payload
+end
+
+-- The profile name stored in an export string, if it is one.
+function ns.ImportName(text)
+    local payload = Decode(text)
+    if payload and type(payload.name) == "string" then
+        return Trim(payload.name):sub(1, PROFILE_NAME_MAX)
+    end
+end
+
+-- Adds the profile in an export string under `name` (made unique), and
+-- switches to it. Returns its name, or nil and the reason.
+function ns.ImportProfile(text, name)
+    local payload, reason = Decode(text)
+    if not payload then return nil, reason end
+    if Trim(name) == "" then name = type(payload.name) == "string" and payload.name or "" end
+    local unique = UniqueName(name)
+    if not unique then return nil, L.PROFILE_NAME_TAKEN:format(Trim(name)) end
+    db.profiles[unique] = RebuildProfile(payload.data)
+    ns.SetProfile(unique)
+    return unique
 end
 
 --------------------------------------------------------------------------------

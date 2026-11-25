@@ -5,6 +5,8 @@ import * as mock from "wowlua:mock"
 
 config({ profile = "warrior" })
 
+local _, ns = ...
+
 local cooldownUntil = 0
 
 @beforeEach
@@ -21,7 +23,7 @@ end
 
 @afterEach
 local function settle()
-    OverpowerAlertDB.revenge.showOnCooldown = false
+    ns.Config("revenge").showOnCooldown = false
     mock.waitSeconds(6)
     mock.player:leaveCombat()
 end
@@ -46,7 +48,7 @@ end
 
 @test("on: alerts straight away")
 local function on()
-    OverpowerAlertDB.revenge.showOnCooldown = true
+    ns.Config("revenge").showOnCooldown = true
     cooldownUntil = GetTime() + 3
     block()
     expect(icon()).toBeShown()

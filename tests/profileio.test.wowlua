@@ -1,0 +1,142 @@
+-- Export and import: a profile as a text string, and back as a new profile.
+import test, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local E = C_EncodingUtil
+
+-- An export string made by hand around `payload`, as a damaged or edited
+-- string would be.
+local function encode(payload)
+    local cbor = E.SerializeCBOR(payload)
+    return "!OPA1!" .. E.EncodeBase64(E.CompressString(cbor, Enum.CompressionMethod.Deflate))
+end
+
+local function names()
+    return table.concat(ns.ProfileNames(), ",")
+end
+
+@afterEach
+local function reset()
+    ns.SetProfile("Default")
+    for _, name in ipairs(ns.ProfileNames()) do
+        if name ~= "Default" then ns.DeleteProfile(name) end
+    end
+    ns.ResetProfile()
+end
+
+@test("export then import gives the same profile under a new name, and switches to it")
+local function roundTrip()
+    local op = ns.Config("overpower")
+    op.sound = "cdm:316723"
+    op.customText = "SMASH"
+    op.iconSize = 88
+    op.iconPos = { "TOPLEFT", "CENTER", -200.5, 75 }
+    op.stances.berserker = false
+    ns.Config("revenge").textPos = { "CENTER", "CENTER", 10, 20 }
+    ns.General().font = "Morpheus"
+    ns.General().groupPos = { "BOTTOM", "CENTER", 0, -100 }
+    local text = ns.ExportProfile()
+    expect(text:sub(1, 6)).toBe("!OPA1!")
+    expect(ns.ImportName(text)).toBe("Default")
+
+    local name = ns.ImportProfile(text, "Shared")
+    expect(name).toBe("Shared")
+    expect(ns.ActiveProfileName()).toBe("Shared")
+    local got = ns.Config("overpower")
+    expect(got.sound).toBe("cdm:316723")
+    expect(got.customText).toBe("SMASH")
+    expect(got.iconSize).toBe(88)
+    expect(got.iconPos[1]).toBe("TOPLEFT")
+    expect(got.iconPos[3]).toBe(-200.5)
+    expect(got.stances.berserker).toBe(false)
+    expect(ns.Config("revenge").textPos[4]).toBe(20)
+    expect(ns.General().font).toBe("Morpheus")
+    expect(ns.General().groupPos[4]).toBe(-100)
+    -- A separate copy.
+    got.iconSize = 50
+    expect(OverpowerAlertDB.profiles.Default.overpower.iconSize).toBe(88)
+end
+
+@test("an import without a name uses the one in the string, made unique")
+local function nameTaken()
+    ns.NewProfile("Tank")
+    ns.Config("overpower").iconSize = 120
+    local text = ns.ExportProfile()
+    expect(ns.ImportProfile(text, "")).toBe("Tank (2)")
+    expect(names()).toBe("Default,Tank,Tank (2)")
+    expect(OverpowerAlertDB.profiles.Tank.overpower.iconSize).toBe(120)
+end
+
+@test("text that isn't a whole profile string is refused, and nothing changes")
+local function refused()
+    local good = ns.ExportProfile()
+    local bad = {
+        "",
+        "   ",
+        "hello there",
+        "!OPA1!not base64 at all ~~~",
+        good:sub(1, math.floor(#good / 2)),
+        "!OPA1!" .. string.rep("A", 70 * 1024),
+        "!WA:2!abcdef", -- another addon's string
+    }
+    for _, text in ipairs(bad) do
+        local name, reason = ns.ImportProfile(text, "")
+        expect(name).toBe(nil)
+        expect(type(reason)).toBe("string")
+    end
+    expect(names()).toBe("Default")
+    expect(ns.ActiveProfileName()).toBe("Default")
+end
+
+@test("a string from a newer version is refused as newer")
+local function newer()
+    local name, reason = ns.ImportProfile("!OPA2!AAAA", "")
+    expect(name).toBe(nil)
+    expect(reason:find("newer", 1, true) ~= nil).toBe(true)
+end
+
+@test("bad or unknown values are dropped for defaults; sizes are kept in range")
+local function sanitized()
+    local text = encode({ v = 1, name = "Odd", data = {
+        general = { font = 7, iconLayout = "group", groupPos = "x", evil = "x" },
+        overpower = {
+            iconSize = 999,
+            textSize = "big",
+            stances = "all",
+            iconPos = { "NOWHERE", "CENTER", 0, 0 },
+            somethingNew = true,
+        },
+        revenge = { enabled = false, nameplateX = 1e9 },
+    } })
+    local name = ns.ImportProfile(text, "")
+    expect(name).toBe("Odd")
+    local op = ns.Config("overpower")
+    expect(op.iconSize).toBe(200)
+    expect(op.textSize).toBe(36)
+    expect(op.stances.battle).toBe(true)
+    expect(op.iconPos).toBe(nil)
+    expect(op.somethingNew).toBe(nil)
+    expect(ns.Config("revenge").enabled).toBe(false)
+    expect(ns.Config("revenge").nameplateX).toBe(500)
+    expect(ns.General().font).toBe("DEFAULT")
+    expect(ns.General().iconLayout).toBe("group")
+    expect(ns.General().groupPos).toBe(nil)
+    expect(ns.General().evil).toBe(nil)
+    -- Applying it raises no error.
+    ns.ApplySettings()
+    expect(#mock.errors()).toBe(0)
+end
+
+@test("abilities missing from the string get their defaults")
+local function missingAbilities()
+    local text = encode({ v = 1, name = "Partial", data = { overpower = { iconSize = 77 } } })
+    expect(ns.ImportProfile(text, "")).toBe("Partial")
+    expect(ns.Config("overpower").iconSize).toBe(77)
+    expect(ns.Config("execute").enabled).toBe(false)
+    expect(ns.Config("revenge").sound).toBe("NONE")
+    expect(ns.General().iconLayout).toBe("separate")
+end

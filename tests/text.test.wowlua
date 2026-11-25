@@ -16,7 +16,7 @@ local function shownText(ability)
 end
 
 local function setText(key, text)
-    OverpowerAlertDB[key].customText = text
+    ns.Config(key).customText = text
     ns.ApplyTextStyle(key)
 end
 
@@ -28,7 +28,7 @@ end
 
 @test("empty by default: each ability's own text")
 local function default()
-    expect(OverpowerAlertDB.overpower.customText).toBe("")
+    expect(ns.Config("overpower").customText).toBe("")
     expect(shownText("Overpower")).toBe("OVERPOWER!")
     expect(shownText("Revenge")).toBe("REVENGE!")
 end

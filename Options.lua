@@ -550,6 +550,158 @@ local function BuildAbilityPage(content, ability)
 end
 
 --------------------------------------------------------------------------------
+-- The profile dialog: one small window for naming a profile, confirming a
+-- delete or reset, and showing or pasting an export string.
+--------------------------------------------------------------------------------
+
+local dialog
+
+local function BuildDialog()
+    local d = CreateFrame("Frame", "OverpowerAlertProfileDialog", UIParent)
+    d:SetSize(420, 200)
+    d:SetPoint("CENTER", 0, 80)
+    d:SetFrameStrata("FULLSCREEN_DIALOG")
+    d:SetToplevel(true)
+    d:EnableMouse(true) -- clicks don't fall through to the options window
+    d:Hide()
+
+    local border = d:CreateTexture(nil, "BACKGROUND", nil, -1)
+    border:SetPoint("TOPLEFT", -2, 2)
+    border:SetPoint("BOTTOMRIGHT", 2, -2)
+    border:SetColorTexture(0.6, 0.5, 0.2, 1)
+    local bg = d:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.06, 0.06, 0.06, 0.97)
+
+    d.title = Label(d, "", "GameFontNormalLarge")
+    d.title:SetPoint("TOPLEFT", 16, -14)
+    d.title:SetPoint("RIGHT", -16, 0)
+    d.title:SetJustifyH("LEFT")
+
+    d.message = Label(d, "", "GameFontHighlight")
+    d.message:SetJustifyH("LEFT")
+    d.message:SetWidth(388)
+
+    d.nameLabel = Label(d, L.PROFILE_NAME)
+    d.name = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
+    d.name:SetSize(260, 22)
+    d.name:SetAutoFocus(false)
+    d.name:SetMaxLetters(ns.PROFILE_NAME_MAX)
+
+    -- The export string, or where an import is pasted.
+    d.scroll = CreateFrame("ScrollFrame", nil, d, "UIPanelScrollFrameTemplate")
+    d.scroll:SetSize(362, 120)
+    d.body = CreateFrame("EditBox", nil, d.scroll)
+    d.body:SetMultiLine(true)
+    d.body:SetAutoFocus(false)
+    d.body:SetFontObject(ChatFontNormal)
+    d.body:SetWidth(362)
+    d.scroll:SetScrollChild(d.body)
+    local bodyBg = d:CreateTexture(nil, "ARTWORK")
+    bodyBg:SetPoint("TOPLEFT", d.scroll, -4, 4)
+    bodyBg:SetPoint("BOTTOMRIGHT", d.scroll, 4, -4)
+    bodyBg:SetColorTexture(0, 0, 0, 0.6)
+    d.bodyBg = bodyBg
+
+    d.error = Label(d, "", "GameFontNormal")
+    d.error:SetTextColor(1, 0.25, 0.25)
+    d.error:SetJustifyH("LEFT")
+    d.error:SetWidth(388)
+
+    d.ok = CreateButton(d, OKAY or "OK", 100)
+    d.ok:SetPoint("BOTTOMRIGHT", -124, 14)
+    d.cancel = CreateButton(d, CANCEL or "Cancel", 100)
+    d.cancel:SetPoint("BOTTOMRIGHT", -16, 14)
+    d.cancel:SetScript("OnClick", function() d:Hide() end)
+
+    local function Confirm()
+        if not d.onOK then d:Hide(); return end
+        local ok, reason = d.onOK(d.name:GetText(), d.body:GetText())
+        if ok then
+            d:Hide()
+        else
+            d.error:SetText(reason or "")
+            d.error:Show()
+            d:Layout()
+        end
+    end
+    d.ok:SetScript("OnClick", Confirm)
+    d.name:SetScript("OnEnterPressed", Confirm)
+    for _, box in ipairs({ d.name, d.body }) do
+        box:SetScript("OnEscapePressed", function() d:Hide() end)
+    end
+    d.name:SetScript("OnTextChanged", function(_, userInput)
+        if userInput then d.nameTyped = true end
+    end)
+    d.body:SetScript("OnTextChanged", function(self, userInput)
+        if userInput and d.onBodyChanged then d.onBodyChanged(self:GetText()) end
+    end)
+
+    -- Stacks the parts in use and sizes the window to fit them.
+    function d:Layout()
+        local anchor, height = self.title, 14 + self.title:GetStringHeight()
+        local function Place(region, gap, x)
+            region:ClearAllPoints()
+            region:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", x or 0, -gap)
+            anchor = region
+        end
+        if self.message:GetText() ~= "" then
+            Place(self.message, 10)
+            height = height + 10 + self.message:GetStringHeight()
+        end
+        if self.scroll:IsShown() then
+            Place(self.scroll, 14, 4)
+            height = height + 14 + 120
+        end
+        if self.name:IsShown() then
+            Place(self.nameLabel, 14, self.scroll:IsShown() and -4 or 0)
+            Place(self.name, 4, 6)
+            height = height + 14 + self.nameLabel:GetStringHeight() + 4 + 22
+        end
+        if self.error:IsShown() then
+            Place(self.error, 10, self.name:IsShown() and -6 or 0)
+            height = height + 10 + self.error:GetStringHeight()
+        end
+        self:SetHeight(height + 14 + 24 + 14)
+    end
+    return d
+end
+
+-- Opens the dialog. `opts`: title, message, name (pre-filled; nil hides the
+-- box), body (shows the text box; a string pre-fills it), okText, onOK(name,
+-- body) returning true or nil and a reason, onBodyChanged(body), noCancel.
+local function OpenDialog(opts)
+    dialog = dialog or BuildDialog()
+    local d = dialog
+    d.title:SetText(opts.title or "")
+    d.message:SetText(opts.message or "")
+    d.error:SetText("")
+    d.error:Hide()
+    d.nameTyped = false
+    d.name:SetShown(opts.name ~= nil)
+    d.nameLabel:SetShown(opts.name ~= nil)
+    d.name:SetText(opts.name or "")
+    d.scroll:SetShown(opts.body ~= nil)
+    d.bodyBg:SetShown(opts.body ~= nil)
+    d.body:SetText(type(opts.body) == "string" and opts.body or "")
+    d.ok:SetText(opts.okText or OKAY or "OK")
+    d.cancel:SetShown(not opts.noCancel)
+    d.ok:ClearAllPoints()
+    d.ok:SetPoint("BOTTOMRIGHT", opts.noCancel and -16 or -124, 14)
+    d.onOK = opts.onOK
+    d.onBodyChanged = opts.onBodyChanged
+    d:Layout()
+    d:Show()
+    if opts.body ~= nil then
+        d.body:SetFocus()
+        d.body:HighlightText()
+    elseif opts.name ~= nil then
+        d.name:SetFocus()
+        d.name:HighlightText()
+    end
+end
+
+--------------------------------------------------------------------------------
 -- The General page: settings shared by every ability. Returns its refresher.
 --------------------------------------------------------------------------------
 
@@ -559,10 +711,99 @@ local function BuildGeneralPage(content)
     desc:SetPoint("TOPLEFT", 16, -8)
 
     ---------------------------------------------------------------------------
-    -- Talent sets: separate settings for primary and secondary talents
+    -- Profiles: every setting on every tab, saved under a name. Shared by all
+    -- the account's characters; each character uses the one chosen here.
+    ---------------------------------------------------------------------------
+    local profileLabel = Label(content, L.PROFILE)
+    profileLabel:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -16)
+
+    local function ProfileOptions()
+        local list = {}
+        for _, name in ipairs(ns.ProfileNames()) do list[#list + 1] = { value = name, label = name } end
+        return list
+    end
+    local profileDD = CreateRadioDropdown(content, 220, ProfileOptions,
+        function() return ns.ActiveProfileName() end,
+        function(name) ns.SetProfile(name) end)
+    profileDD:SetPoint("TOPLEFT", profileLabel, "BOTTOMLEFT", 0, -6)
+
+    local newB = CreateButton(content, L.PROFILE_NEW, 78)
+    newB:SetPoint("LEFT", profileDD, "RIGHT", 10, 0)
+    local copyB = CreateButton(content, L.PROFILE_COPY, 78)
+    copyB:SetPoint("LEFT", newB, "RIGHT", 4, 0)
+    local renameB = CreateButton(content, L.PROFILE_RENAME, 78)
+    renameB:SetPoint("LEFT", copyB, "RIGHT", 4, 0)
+    local deleteB = CreateButton(content, L.PROFILE_DELETE, 78)
+    deleteB:SetPoint("LEFT", renameB, "RIGHT", 4, 0)
+
+    local resetB = CreateButton(content, L.PROFILE_RESET, 120)
+    resetB:SetPoint("TOPLEFT", profileDD, "BOTTOMLEFT", 0, -8)
+    local exportB = CreateButton(content, L.PROFILE_EXPORT, 90)
+    exportB:SetPoint("LEFT", resetB, "RIGHT", 4, 0)
+    local importB = CreateButton(content, L.PROFILE_IMPORT, 90)
+    importB:SetPoint("LEFT", exportB, "RIGHT", 4, 0)
+
+    local profileHint = Label(content, L.PROFILE_HINT, "GameFontDisableSmall")
+    profileHint:SetJustifyH("LEFT")
+    profileHint:SetPoint("TOPLEFT", resetB, "BOTTOMLEFT", 0, -8)
+
+    newB:SetScript("OnClick", function()
+        OpenDialog({ title = L.PROFILE_NEW_TITLE, name = "", onOK = function(name) return ns.NewProfile(name) end })
+    end)
+    copyB:SetScript("OnClick", function()
+        local current = ns.ActiveProfileName()
+        OpenDialog({
+            title = L.PROFILE_COPY_TITLE:format(current),
+            name = L.PROFILE_COPY_NAME:format(current):sub(1, ns.PROFILE_NAME_MAX),
+            onOK = function(name) return ns.CopyProfile(name) end,
+        })
+    end)
+    renameB:SetScript("OnClick", function()
+        local current = ns.ActiveProfileName()
+        OpenDialog({
+            title = L.PROFILE_RENAME_TITLE:format(current), name = current,
+            onOK = function(name) return ns.RenameProfile(current, name) end,
+        })
+    end)
+    deleteB:SetScript("OnClick", function()
+        local current = ns.ActiveProfileName()
+        OpenDialog({
+            title = L.PROFILE_DELETE_TITLE, message = L.PROFILE_DELETE_CONFIRM:format(current),
+            okText = L.PROFILE_DELETE, onOK = function() return ns.DeleteProfile(current) end,
+        })
+    end)
+    resetB:SetScript("OnClick", function()
+        local current = ns.ActiveProfileName()
+        OpenDialog({
+            title = L.PROFILE_RESET_TITLE, message = L.PROFILE_RESET_CONFIRM:format(current),
+            okText = L.PROFILE_RESET, onOK = function() return ns.ResetProfile() end,
+        })
+    end)
+    exportB:SetScript("OnClick", function()
+        local text, reason = ns.ExportProfile()
+        OpenDialog({
+            title = L.PROFILE_EXPORT_TITLE:format(ns.ActiveProfileName()),
+            message = text and L.PROFILE_EXPORT_HINT or reason,
+            body = text or "", okText = CLOSE or "Close", noCancel = true,
+        })
+    end)
+    importB:SetScript("OnClick", function()
+        OpenDialog({
+            title = L.PROFILE_IMPORT_TITLE, message = L.PROFILE_IMPORT_HINT, body = true, name = "",
+            okText = L.PROFILE_IMPORT,
+            -- Offer the name in the string, unless the player typed their own.
+            onBodyChanged = function(body)
+                if not dialog.nameTyped then dialog.name:SetText(ns.ImportName(body) or "") end
+            end,
+            onOK = function(name, body) return ns.ImportProfile(body, name) end,
+        })
+    end)
+
+    ---------------------------------------------------------------------------
+    -- Talent sets: a profile for primary and one for secondary talents
     ---------------------------------------------------------------------------
     local specLabel = Label(content, L.TALENT_SETS)
-    specLabel:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -16)
+    specLabel:SetPoint("TOPLEFT", profileHint, "BOTTOMLEFT", 0, -20)
 
     -- The talent set the player is on now, whether or not it's turned on.
     local currentSet = Label(content, "", "GameFontHighlight")
@@ -577,26 +818,49 @@ local function BuildGeneralPage(content)
     local perSpecText = perSpec.Text or perSpec:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     perSpecText:SetPoint("LEFT", perSpec, "RIGHT", 4, 1)
     perSpecText:SetText(L.PER_SPEC)
+    perSpec:SetScript("OnClick", function(self) ns.SetPerSpec(self:GetChecked()) end)
 
-    local specStatus = Label(content, "", "GameFontNormalSmall")
-    specStatus:SetJustifyH("LEFT")
-    specStatus:SetPoint("TOPLEFT", perSpec, "BOTTOMLEFT", 4, -4)
-
-    local function RefreshSpec()
-        ns.RefreshCurrentSet()
-        perSpec:SetChecked(ns.PerSpec())
-        specStatus:SetText(ns.PerSpec()
-            and L.EDITING_SPEC:format(ns.SpecName(OverpowerAlertDB.activeSpec))
-            or L.EDITING_ALL)
+    -- Each set's profile, usable while the option is on.
+    local setDDs = {}
+    local prev
+    for group = 1, 2 do
+        local label = Label(content, group == 1 and L.SET_PRIMARY or L.SET_SECONDARY, "GameFontHighlightSmall")
+        if prev then
+            label:SetPoint("LEFT", prev, "RIGHT", 20, 0)
+        else
+            label:SetPoint("TOPLEFT", perSpec, "BOTTOMLEFT", 4, -6)
+        end
+        local dd = CreateRadioDropdown(content, 200, ProfileOptions,
+            function() return ns.SpecProfile(group) end,
+            function(name) ns.SetSpecProfile(group, name) end)
+        dd:SetPoint("LEFT", label, "RIGHT", 8, 0)
+        setDDs[group] = dd
+        prev = dd
     end
-    perSpec:SetScript("OnClick", function(self)
-        ns.SetPerSpec(self:GetChecked())
-        RefreshSpec()
-    end)
 
     local specHint = Label(content, L.PER_SPEC_HINT, "GameFontDisableSmall")
     specHint:SetJustifyH("LEFT")
-    specHint:SetPoint("TOPLEFT", specStatus, "BOTTOMLEFT", 0, -6)
+    specHint:SetPoint("TOPLEFT", perSpec, "BOTTOMLEFT", 4, -40)
+
+    local function RefreshProfiles()
+        local isDefault = ns.ActiveProfileName() == ns.DEFAULT_PROFILE
+        renameB:SetEnabled(not isDefault)
+        deleteB:SetEnabled(not isDefault)
+        local canShare = C_EncodingUtil ~= nil
+        exportB:SetEnabled(canShare)
+        importB:SetEnabled(canShare)
+        -- With the talent-set option on, the profile chosen at the top is the
+        -- current talent set's.
+        local on = ns.PerSpec()
+        profileLabel:SetText(on and L.PROFILE_FOR_SET:format(ns.SpecName(ns.ActiveSpecGroup() or 1)) or L.PROFILE)
+        perSpec:SetChecked(on)
+        profileDD:GenerateMenu()
+        for _, dd in ipairs(setDDs) do
+            dd:SetEnabled(on)
+            dd:GenerateMenu()
+        end
+        ns.RefreshCurrentSet()
+    end
 
     local fontLabel = Label(content, L.FONT)
     fontLabel:SetPoint("TOPLEFT", specHint, "BOTTOMLEFT", 0, -20)
@@ -696,7 +960,7 @@ local function BuildGeneralPage(content)
     groupHint:SetPoint("TOPLEFT", unlock, "BOTTOMLEFT", 0, -10)
 
     return function()
-        RefreshSpec()
+        RefreshProfiles()
         fontDD:GenerateMenu()
         layoutDD:GenerateMenu()
         growDD:GenerateMenu()
@@ -783,7 +1047,7 @@ function ns.CreateOptions()
         return content
     end
 
-    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 620))
+    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 780))
     for _, ability in ipairs(ns.ABILITIES) do
         refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1570), ability)
     end

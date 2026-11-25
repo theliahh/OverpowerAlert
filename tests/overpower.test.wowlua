@@ -5,6 +5,8 @@ import * as mock from "wowlua:mock"
 
 config({ profile = "warrior" })
 
+local _, ns = ...
+
 local first, second
 
 -- The hidden combo point that is the Overpower opening (the profile gives the
@@ -17,8 +19,8 @@ end
 local function setup()
     mock.fake("GetShapeshiftForm", function() return 1 end)
     mock.fake("GetShapeshiftFormInfo", function() return nil, nil, nil, 2457 end)
-    OverpowerAlertDB.overpower.iconOnNameplate = true
-    OverpowerAlertDB.overpower.nameplateFallback = true
+    ns.Config("overpower").iconOnNameplate = true
+    ns.Config("overpower").nameplateFallback = true
     first = mock.unitOf("target")
     second = mock.spawnUnit({ name = "Redridge Mongrel", level = 58, reaction = "hostile", distance = 4 })
     first:showNameplate()
@@ -32,7 +34,7 @@ local function settle()
     mock.waitSeconds(2)
     mock.player:target(first)
     second:despawn()
-    OverpowerAlertDB.overpower.iconOnNameplate = false
+    ns.Config("overpower").iconOnNameplate = false
     mock.player:leaveCombat()
 end
 

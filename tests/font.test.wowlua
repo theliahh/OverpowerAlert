@@ -20,7 +20,7 @@ local function label(ability)
 end
 
 local function setFont(name)
-    OverpowerAlertDB.general.font = name
+    ns.General().font = name
     ns.ApplyFont()
 end
 
@@ -31,7 +31,7 @@ end
 
 @test("the default is the game's font")
 local function default()
-    expect(OverpowerAlertDB.general.font).toBe("DEFAULT")
+    expect(ns.General().font).toBe("DEFAULT")
     expect(fontOf(label("Overpower"))).toBe(STANDARD_TEXT_FONT)
 end
 

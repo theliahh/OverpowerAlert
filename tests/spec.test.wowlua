@@ -1,4 +1,5 @@
--- Separate settings for primary and secondary talents (General tab).
+-- Talent sets: with the option on (General tab), each talent set uses its own
+-- profile, and swapping talents switches to it.
 import test, beforeEach, afterEach, expect, config from "wowlua:test"
 import * as mock from "wowlua:mock"
 
@@ -18,6 +19,17 @@ local function swapTo(group, event)
     end
 end
 
+local function iconWidth()
+    return math.floor(_G["OverpowerAlertOverpowerIconFrame"]:GetWidth() + 0.5)
+end
+
+-- "Tank": a profile with a bigger Overpower icon.
+local function makeTank()
+    ns.NewProfile("Tank")
+    ns.Config("overpower").iconSize = 120
+    ns.SetProfile("Default")
+end
+
 @beforeEach
 local function setup()
     specGroup = 1
@@ -26,84 +38,98 @@ end
 
 @afterEach
 local function reset()
+    specGroup = 1
     ns.SetPerSpec(false)
-    OverpowerAlertDB.specProfiles = {}
-    OverpowerAlertDB.activeSpec = 1
-    OverpowerAlertDB.overpower.iconSize = 64
-    OverpowerAlertDB.overpower.enabled = true
-    OverpowerAlertDB.general.iconLayout = "separate"
-    OverpowerAlertDB.general.font = "DEFAULT"
-    ns.ApplySettings()
+    ns.SetProfile("Default")
+    for _, name in ipairs(ns.ProfileNames()) do
+        if name ~= "Default" then ns.DeleteProfile(name) end
+    end
 end
 
-@test("off by default: swapping talents keeps the same settings")
+@test("off by default: swapping talents changes nothing")
 local function offByDefault()
+    makeTank()
     expect(ns.PerSpec()).toBe(false)
-    OverpowerAlertDB.overpower.iconSize = 90
     swapTo(2)
-    expect(OverpowerAlertDB.overpower.iconSize).toBe(90)
-    expect(OverpowerAlertDB.activeSpec).toBe(1)
+    expect(ns.ActiveProfileName()).toBe("Default")
+    expect(iconWidth()).toBe(64)
 end
 
-@test("the second set starts as a copy, then each keeps its own")
-local function separate()
+@test("on: each talent set uses its profile, and a swap applies it")
+local function perSet()
+    makeTank()
     ns.SetPerSpec(true)
-    OverpowerAlertDB.overpower.iconSize = 90
+    ns.SetSpecProfile(2, "Tank")
+    expect(ns.ActiveProfileName()).toBe("Default") -- still on set 1
     swapTo(2)
-    expect(OverpowerAlertDB.activeSpec).toBe(2)
-    expect(OverpowerAlertDB.overpower.iconSize).toBe(90) -- copied
-    OverpowerAlertDB.overpower.iconSize = 120
-    OverpowerAlertDB.overpower.enabled = false
-    OverpowerAlertDB.general.iconLayout = "group"
+    expect(ns.ActiveProfileName()).toBe("Tank")
+    expect(iconWidth()).toBe(120)
     swapTo(1)
-    expect(OverpowerAlertDB.overpower.iconSize).toBe(90)
-    expect(OverpowerAlertDB.overpower.enabled).toBe(true)
-    expect(OverpowerAlertDB.general.iconLayout).toBe("separate")
-    swapTo(2)
-    expect(OverpowerAlertDB.overpower.iconSize).toBe(120)
-    expect(OverpowerAlertDB.overpower.enabled).toBe(false)
-    expect(OverpowerAlertDB.general.iconLayout).toBe("group")
+    expect(ns.ActiveProfileName()).toBe("Default")
+    expect(iconWidth()).toBe(64)
 end
 
-@test("a swap resizes the icon on screen")
-local function applies()
+@test("a swap says in chat which profile is now in use")
+local function announces()
+    makeTank()
+    ns.SetPerSpec(true)
+    ns.SetSpecProfile(2, "Tank")
+    swapTo(2)
+    local said = table.concat(mock.printed(), "\n")
+    expect(said:find("Tank", 1, true) ~= nil).toBe(true)
+end
+
+@test("choosing a profile while on set 2 changes only set 2's")
+local function dropdownSetsCurrent()
+    makeTank()
     ns.SetPerSpec(true)
     swapTo(2)
-    OverpowerAlertDB.overpower.iconSize = 120
-    ns.ApplyIconStyle("overpower")
-    swapTo(1)
-    expect(math.floor(_G["OverpowerAlertOverpowerIconFrame"]:GetWidth() + 0.5)).toBe(64)
-    swapTo(2)
-    expect(math.floor(_G["OverpowerAlertOverpowerIconFrame"]:GetWidth() + 0.5)).toBe(120)
+    ns.SetProfile("Tank")
+    expect(ns.SpecProfile(2)).toBe("Tank")
+    expect(ns.SpecProfile(1)).toBe("Default")
 end
 
-@test("the font is shared by both sets")
-local function sharedFont()
-    ns.SetPerSpec(true)
-    swapTo(2)
-    OverpowerAlertDB.general.font = "Some Font"
-    swapTo(1)
-    expect(OverpowerAlertDB.general.font).toBe("Some Font")
-end
-
-@test("any of the swap events, or the spellbook changing, notices it")
-local function events()
-    ns.SetPerSpec(true)
-    swapTo(2, "SPELLS_CHANGED")
-    expect(OverpowerAlertDB.activeSpec).toBe(2)
-    swapTo(1, "PLAYER_TALENT_UPDATE")
-    expect(OverpowerAlertDB.activeSpec).toBe(1)
-end
-
-@test("turning it on while on the secondary set makes the settings that set's")
-local function enableOnSecondary()
+@test("turning it on gives the profile in use to both sets, so nothing changes")
+local function seedsBoth()
+    makeTank()
     specGroup = 2
-    OverpowerAlertDB.overpower.iconSize = 80
+    ns.SetProfile("Tank")
     ns.SetPerSpec(true)
-    expect(OverpowerAlertDB.activeSpec).toBe(2)
-    swapTo(1)
-    expect(OverpowerAlertDB.overpower.iconSize).toBe(80) -- the primary set starts as a copy
-    OverpowerAlertDB.overpower.iconSize = 50
+    expect(ns.SpecProfile(1)).toBe("Tank")
+    expect(ns.SpecProfile(2)).toBe("Tank")
+    expect(ns.ActiveProfileName()).toBe("Tank")
+end
+
+@test("turning it off keeps the profile in use")
+local function offKeeps()
+    makeTank()
+    ns.SetPerSpec(true)
+    ns.SetSpecProfile(2, "Tank")
     swapTo(2)
-    expect(OverpowerAlertDB.overpower.iconSize).toBe(80)
+    ns.SetPerSpec(false)
+    expect(ns.ActiveProfileName()).toBe("Tank")
+    swapTo(1)
+    expect(ns.ActiveProfileName()).toBe("Tank")
+end
+
+@test("deleting set 2's profile moves set 2 to Default")
+local function deleteSetProfile()
+    makeTank()
+    ns.SetPerSpec(true)
+    ns.SetSpecProfile(2, "Tank")
+    ns.DeleteProfile("Tank")
+    expect(ns.SpecProfile(2)).toBe("Default")
+    swapTo(2)
+    expect(ns.ActiveProfileName()).toBe("Default")
+end
+
+@test("the spellbook changing or a talent update also notices a swap")
+local function otherEvents()
+    makeTank()
+    ns.SetPerSpec(true)
+    ns.SetSpecProfile(2, "Tank")
+    swapTo(2, "SPELLS_CHANGED")
+    expect(ns.ActiveProfileName()).toBe("Tank")
+    swapTo(1, "PLAYER_TALENT_UPDATE")
+    expect(ns.ActiveProfileName()).toBe("Default")
 end

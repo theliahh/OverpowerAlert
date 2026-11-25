@@ -1,0 +1,250 @@
+-- Profiles: named setups of every setting, shared by the account, with each
+-- character choosing one; and the one-time move of older saved settings
+-- into them.
+import test, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local ME = "Tester - Realm" -- the warrior profile's character
+
+local function iconWidth()
+    return math.floor(_G["OverpowerAlertOverpowerIconFrame"]:GetWidth() + 0.5)
+end
+
+local function names()
+    return table.concat(ns.ProfileNames(), ",")
+end
+
+-- Starts this test over after a /reload with `db` as the saved settings, as
+-- if an older version had written them. Returns once they're loaded.
+local function loadWith(marker, db)
+    if OverpowerAlertDB[marker] then return end
+    db[marker] = true
+    OverpowerAlertDB = db
+    mock.reloadUI()
+end
+
+@afterEach
+local function reset()
+    ns.SetPerSpec(false)
+    ns.SetProfile("Default")
+    for _, name in ipairs(ns.ProfileNames()) do
+        if name ~= "Default" then ns.DeleteProfile(name) end
+    end
+    ns.ResetProfile()
+    OverpowerAlertDB.legacyPerSpec = nil
+end
+
+@test("a fresh install has a Default profile with default settings, used by this character")
+local function freshInstall()
+    expect(OverpowerAlertDB.dbVersion).toBe(2)
+    expect(names()).toBe("Default")
+    expect(ns.ActiveProfileName()).toBe("Default")
+    expect(OverpowerAlertDB.chars[ME].profile).toBe("Default")
+    expect(ns.Config("overpower").iconSize).toBe(64)
+    expect(ns.General().iconLayout).toBe("separate")
+end
+
+-- Profile operations
+
+@test("switching profile resizes and regroups the icons")
+local function switching()
+    ns.NewProfile("Big")
+    ns.Config("overpower").iconSize = 120
+    ns.General().iconLayout = "group"
+    ns.SetProfile("Default")
+    expect(iconWidth()).toBe(64)
+    expect(ns.General().iconLayout).toBe("separate")
+    ns.SetProfile("Big")
+    expect(ns.ActiveProfileName()).toBe("Big")
+    expect(iconWidth()).toBe(120)
+    expect(ns.General().iconLayout).toBe("group")
+end
+
+@test("New starts from defaults; Copy copies the active profile, separately")
+local function newAndCopy()
+    ns.Config("overpower").iconSize = 90
+    ns.NewProfile("Fresh")
+    expect(ns.ActiveProfileName()).toBe("Fresh")
+    expect(ns.Config("overpower").iconSize).toBe(64)
+    ns.SetProfile("Default")
+    ns.CopyProfile("Copied")
+    expect(ns.ActiveProfileName()).toBe("Copied")
+    expect(ns.Config("overpower").iconSize).toBe(90)
+    ns.Config("overpower").iconSize = 30
+    expect(OverpowerAlertDB.profiles.Default.overpower.iconSize).toBe(90)
+end
+
+@test("Rename updates every reference, the talent sets' and the pending upgrade mapping's too")
+local function rename()
+    ns.NewProfile("Arms")
+    OverpowerAlertDB.legacyPerSpec = { primary = "Default", secondary = "Arms" }
+    ns.SetPerSpec(true) -- both talent sets on Arms
+    expect(ns.RenameProfile("Arms", "Fury")).toBe(true)
+    expect(ns.ActiveProfileName()).toBe("Fury")
+    expect(ns.SpecProfile(1)).toBe("Fury")
+    expect(ns.SpecProfile(2)).toBe("Fury")
+    expect(OverpowerAlertDB.legacyPerSpec.secondary).toBe("Fury")
+    expect(names()).toBe("Default,Fury")
+end
+
+@test("bad names are refused with a reason")
+local function badNames()
+    ns.NewProfile("Tank")
+    local ok, reason = ns.RenameProfile("Tank", "default")
+    expect(ok).toBe(nil)
+    expect(reason ~= nil).toBe(true)
+    expect(ns.RenameProfile("Tank", "")).toBe(nil)
+    expect(ns.RenameProfile("Tank", "   ")).toBe(nil)
+    expect(ns.RenameProfile("Tank", string.rep("x", 33))).toBe(nil)
+    expect(ns.RenameProfile("Tank", string.rep("x", 32))).toBe(true)
+    expect(ns.NewProfile("  ")).toBe(nil)
+end
+
+@test("Default can't be renamed or deleted")
+local function defaultFixed()
+    expect(ns.RenameProfile("Default", "Main")).toBe(nil)
+    expect(ns.DeleteProfile("Default")).toBe(nil)
+    expect(names()).toBe("Default")
+end
+
+@test("deleting the profile in use switches to Default")
+local function deleteActive()
+    ns.NewProfile("Big")
+    ns.Config("overpower").iconSize = 120
+    ns.ApplySettings()
+    expect(iconWidth()).toBe(120)
+    expect(ns.DeleteProfile("Big")).toBe(true)
+    expect(ns.ActiveProfileName()).toBe("Default")
+    expect(iconWidth()).toBe(64)
+end
+
+@test("deleting a profile another character uses moves that character to Default")
+local function deleteOthers()
+    ns.NewProfile("Old")
+    OverpowerAlertDB.chars["Alt - Realm"] = { profile = "Old", perSpec = true, specProfile = { "Default", "Old" } }
+    OverpowerAlertDB.legacyPerSpec = { primary = "Default", secondary = "Old" }
+    ns.SetProfile("Default")
+    ns.DeleteProfile("Old")
+    expect(OverpowerAlertDB.chars["Alt - Realm"].profile).toBe("Default")
+    expect(OverpowerAlertDB.chars["Alt - Realm"].specProfile[2]).toBe("Default")
+    expect(OverpowerAlertDB.legacyPerSpec.secondary).toBe("Default")
+    OverpowerAlertDB.chars["Alt - Realm"] = nil
+end
+
+@test("Reset puts the active profile back to defaults and applies it")
+local function resetProfile()
+    ns.Config("overpower").iconSize = 150
+    ns.ApplySettings()
+    expect(iconWidth()).toBe(150)
+    ns.ResetProfile()
+    expect(ns.Config("overpower").iconSize).toBe(64)
+    expect(iconWidth()).toBe(64)
+end
+
+@test("switching profile while the icons are unlocked locks them first")
+local function switchLocks()
+    ns.SetUnlocked(nil, nil, true)
+    expect(ns.IsUnlocked("overpower", "icon")).toBe(true)
+    ns.NewProfile("Other")
+    expect(ns.IsUnlocked("overpower", "icon")).toBe(false)
+end
+
+-- The one-time move of older saved settings
+
+@test("older settings with the talent-set option off become Default, a leftover set ignored")
+local function upgradeOptionOff()
+    loadWith("upgradeOptionOff", {
+        general = { font = "DEFAULT", iconLayout = "group", groupGrow = "LEFT" },
+        overpower = { iconSize = 90, iconPos = { "CENTER", "CENTER", 120, -40 } },
+        revenge = { sound = "cdm:316723" },
+        perSpec = false,
+        activeSpec = 2, -- left behind when the option was turned off
+        specProfiles = { { overpower = { iconSize = 30 } } },
+    })
+    expect(names()).toBe("Default")
+    expect(ns.PerSpec()).toBe(false)
+    expect(ns.Config("overpower").iconSize).toBe(90)
+    expect(ns.Config("overpower").iconPos[3]).toBe(120)
+    expect(ns.Config("revenge").sound).toBe("cdm:316723")
+    expect(ns.General().iconLayout).toBe("group")
+    expect(ns.General().groupGrow).toBe("LEFT")
+    expect(iconWidth()).toBe(90)
+    -- The old settings stay where an older version would look for them.
+    expect(OverpowerAlertDB.overpower.iconSize).toBe(90)
+    expect(OverpowerAlertDB.specProfiles[1].overpower.iconSize).toBe(30)
+end
+
+@test("older talent-set settings on set 2: set 1's become Default, set 2's Secondary talents")
+local function upgradeSet2()
+    loadWith("upgradeSet2", {
+        general = { font = "Live Font" },
+        overpower = { iconSize = 90 }, -- set 2's, in use
+        perSpec = true,
+        activeSpec = 2,
+        specProfiles = { { general = { font = "Old Font" }, overpower = { iconSize = 30 } } },
+    })
+    expect(names()).toBe("Default,Secondary talents")
+    expect(OverpowerAlertDB.profiles.Default.overpower.iconSize).toBe(30)
+    expect(OverpowerAlertDB.profiles["Secondary talents"].overpower.iconSize).toBe(90)
+    -- The font was shared by both sets: both keep the one in use.
+    expect(OverpowerAlertDB.profiles.Default.general.font).toBe("Live Font")
+    expect(OverpowerAlertDB.profiles["Secondary talents"].general.font).toBe("Live Font")
+    expect(ns.PerSpec()).toBe(true)
+    expect(ns.SpecProfile(1)).toBe("Default")
+    expect(ns.SpecProfile(2)).toBe("Secondary talents")
+    -- This character is on primary talents (set 1).
+    expect(ns.ActiveProfileName()).toBe("Default")
+    expect(iconWidth()).toBe(30)
+end
+
+@test("older talent-set settings on set 1: the live ones become Default")
+local function upgradeSet1()
+    loadWith("upgradeSet1", {
+        overpower = { iconSize = 90 }, -- set 1's, in use
+        perSpec = true,
+        activeSpec = 1,
+        specProfiles = { [2] = { overpower = { iconSize = 30 } } },
+    })
+    expect(OverpowerAlertDB.profiles.Default.overpower.iconSize).toBe(90)
+    expect(OverpowerAlertDB.profiles["Secondary talents"].overpower.iconSize).toBe(30)
+    expect(ns.ActiveProfileName()).toBe("Default")
+end
+
+@test("another character's first load after the upgrade gets the talent-set mapping; nothing migrates twice")
+local function upgradeOtherCharacter()
+    loadWith("upgradeOtherCharacter", {
+        dbVersion = 2,
+        profiles = { Default = {}, Tank = { overpower = { iconSize = 120 } } },
+        legacyPerSpec = { primary = "Default", secondary = "Tank" },
+        chars = { ["Main - Realm"] = { profile = "Default", perSpec = true, specProfile = { "Default", "Tank" } } },
+        overpower = { iconSize = 150 }, -- the frozen old settings
+    })
+    expect(ns.PerSpec()).toBe(true)
+    expect(ns.SpecProfile(1)).toBe("Default")
+    expect(ns.SpecProfile(2)).toBe("Tank")
+    expect(OverpowerAlertDB.profiles.Default.overpower.iconSize).toBe(64)
+    expect(names()).toBe("Default,Tank")
+end
+
+@test("a character whose profile no longer exists falls back to Default")
+local function missingProfile()
+    loadWith("missingProfile", {
+        dbVersion = 2,
+        profiles = { Default = { overpower = { iconSize = 70 } } },
+        chars = { [ME] = { profile = "Gone", perSpec = false, specProfile = { "Gone", "Gone" } } },
+    })
+    expect(ns.ActiveProfileName()).toBe("Default")
+    expect(ns.Config("overpower").iconSize).toBe(70)
+    expect(OverpowerAlertDB.chars[ME].profile).toBe("Default")
+end
+
+@test("pre-1.2 settings (Overpower's at the top level) still become Default")
+local function upgradeOldest()
+    loadWith("upgradeOldest", { enabled = true, sound = "cdm:316723", iconSize = 100 })
+    expect(OverpowerAlertDB.profiles.Default.overpower.iconSize).toBe(100)
+    expect(ns.Config("overpower").sound).toBe("cdm:316723")
+end

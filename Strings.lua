@@ -66,18 +66,56 @@ L.BERSERKER_STANCE = "Berserker Stance"
 
 L.GENERAL = "General"
 L.GENERAL_DESCRIPTION = "Settings shared by every ability."
+L.PROFILE = "Profile"
+L.PROFILE_FOR_SET = "Profile (%s)"               -- %s: SPEC_PRIMARY or SPEC_SECONDARY
+L.PROFILE_NEW = "New"
+L.PROFILE_COPY = "Copy"
+L.PROFILE_RENAME = "Rename"
+L.PROFILE_DELETE = "Delete"
+L.PROFILE_RESET = "Reset profile"
+L.PROFILE_EXPORT = "Export"
+L.PROFILE_IMPORT = "Import"
+L.PROFILE_HINT = "A profile holds every setting on every tab. Profiles are shared by all your characters, and\n" ..
+    "each character uses the one chosen here. The Default profile can't be renamed or deleted."
+L.PROFILE_NAME = "Profile name"
+L.PROFILE_NEW_TITLE = "New profile (default settings)"
+L.PROFILE_COPY_TITLE = "Copy \"%s\" to a new profile" -- %s: profile name
+L.PROFILE_COPY_NAME = "%s copy"                  -- %s: profile name
+L.PROFILE_RENAME_TITLE = "Rename \"%s\""         -- %s: profile name
+L.PROFILE_DELETE_TITLE = "Delete profile"
+L.PROFILE_DELETE_CONFIRM = "Delete the profile \"%s\"? Every character using it will use Default instead." -- %s: profile name
+L.PROFILE_RESET_TITLE = "Reset profile"
+L.PROFILE_RESET_CONFIRM = "Put every setting in \"%s\" back to its default? Every character using it is affected." -- %s: profile name
+L.PROFILE_EXPORT_TITLE = "Export \"%s\""         -- %s: profile name
+L.PROFILE_EXPORT_HINT = "Copy this text (Ctrl+C) and share it. Importing it recreates this profile, positions included."
+L.PROFILE_IMPORT_TITLE = "Import a profile"
+L.PROFILE_IMPORT_HINT = "Paste a profile string (Ctrl+V). It's added as a new profile and used straight away."
+
 L.TALENT_SETS = "Talent sets"
 L.CURRENT_SET = "Current set: %s"              -- %s: SET_PRIMARY or SET_SECONDARY
 L.SET_PRIMARY = "Primary"
 L.SET_SECONDARY = "Secondary"
-L.PER_SPEC ="Use separate settings for your primary and secondary talents"
+L.PER_SPEC = "Use different profiles for primary and secondary talents"
 L.SPEC_PRIMARY = "primary talents"
 L.SPEC_SECONDARY = "secondary talents"
-L.EDITING_SPEC = "You're on your %s: changes on every tab apply to them." -- %s: SPEC_PRIMARY or SPEC_SECONDARY
-L.EDITING_ALL = "Your settings apply to both talent sets."
-L.PER_SPEC_HINT = "|cffffaa33Experimental:|r swapping talents switches to that set's settings. The first time, they start as a copy\n" ..
-    "of the set you came from. The font below is shared by both."
-L.SPEC_SWITCHED = "now using the settings for your %s" -- %s: SPEC_PRIMARY or SPEC_SECONDARY
+L.PER_SPEC_HINT = "|cffffaa33Experimental:|r swapping talents switches to that set's profile. With this on, the profile\n" ..
+    "chosen at the top is the one for the talent set you're on."
+L.SPEC_SWITCHED = "now using the \"%s\" profile for your %s" -- %s: profile name, then SPEC_PRIMARY or SPEC_SECONDARY
+
+-- Profiles: names and the reasons an action is refused
+L.PROFILE_SECONDARY_TALENTS = "Secondary talents" -- the profile made from old secondary-talent settings
+L.PROFILE_IMPORTED = "Imported"                   -- name for an import with no name
+L.PROFILE_NAME_EMPTY = "Enter a name."
+L.PROFILE_NAME_LONG = "Names can be at most %d letters." -- %d: the limit
+L.PROFILE_NAME_TAKEN = "There's already a profile called \"%s\"." -- %s: the existing name
+L.PROFILE_MISSING = "That profile doesn't exist any more."
+L.PROFILE_DEFAULT_FIXED = "The Default profile can't be renamed or deleted."
+L.EXPORT_FAILED = "This profile couldn't be exported."
+L.IMPORT_EMPTY = "Paste an Overpower Alert profile string first."
+L.IMPORT_TOO_LONG = "That text is too long to be an Overpower Alert profile."
+L.IMPORT_NOT_PROFILE = "That isn't an Overpower Alert profile string."
+L.IMPORT_NEWER = "That profile was exported by a newer version of Overpower Alert. Update the addon to import it."
+L.IMPORT_DAMAGED = "That profile string is damaged or incomplete. Copy it again in full."
 L.FONT = "Font"
 L.FONT_DEFAULT = "Default (game font)"
 L.FONT_HINT = "Used for the on-screen text and the countdown numbers of every ability.\n" ..

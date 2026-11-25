@@ -23,8 +23,8 @@ local function offset(frame)
 end
 
 local function group(grow)
-    OverpowerAlertDB.general.groupGrow = grow
-    OverpowerAlertDB.general.groupSpacing = 6
+    ns.General().groupGrow = grow
+    ns.General().groupSpacing = 6
     ns.SetIconLayout("group")
 end
 
@@ -32,15 +32,15 @@ end
 local function reset()
     ns.SetUnlocked(nil, nil, false)
     ns.SetIconLayout("separate")
-    OverpowerAlertDB.general.groupGrow = "RIGHT"
-    OverpowerAlertDB.general.groupPos = nil
-    OverpowerAlertDB.execute.enabled = false
+    ns.General().groupGrow = "RIGHT"
+    ns.General().groupPos = nil
+    ns.Config("execute").enabled = false
     mock.waitSeconds(2) -- let previews fade
 end
 
 @test("separate is the default: each icon at its own spot")
 local function separate()
-    expect(OverpowerAlertDB.general.iconLayout).toBe("separate")
+    expect(ns.General().iconLayout).toBe("separate")
     ns.ShowIcon("overpower")
     ns.ShowIcon("revenge")
     mock.waitFrames(2)
@@ -92,12 +92,12 @@ local function directions()
     ns.ShowIcon("revenge")
     mock.waitFrames(2)
     expect(offset(icon("Revenge"))).toBe(-70)
-    OverpowerAlertDB.general.groupGrow = "UP"
+    ns.General().groupGrow = "UP"
     ns.LayoutGroup()
     local x, y = offset(icon("Revenge"))
     expect(x).toBe(0)
     expect(y).toBe(70)
-    OverpowerAlertDB.general.groupGrow = "DOWN"
+    ns.General().groupGrow = "DOWN"
     ns.LayoutGroup()
     x, y = offset(icon("Revenge"))
     expect(y).toBe(-70)
@@ -130,7 +130,7 @@ end
 @test("grouped: different sizes keep the spacing")
 local function sizes()
     group("RIGHT")
-    OverpowerAlertDB.revenge.iconSize = 100
+    ns.Config("revenge").iconSize = 100
     ns.ApplyIconStyle("revenge")
     ns.ShowIcon("overpower")
     ns.ShowIcon("revenge")
@@ -138,7 +138,7 @@ local function sizes()
     mock.waitFrames(2)
     expect(offset(icon("Revenge"))).toBe(88)        -- 32 + 6 + 50
     expect(offset(icon("Victory Rush"))).toBe(176)  -- 88 + 50 + 6 + 32
-    OverpowerAlertDB.revenge.iconSize = 64
+    ns.Config("revenge").iconSize = 64
     ns.ApplyIconStyle("revenge")
 end
 
@@ -162,9 +162,9 @@ end
 @test("grouped: moving the spot moves the icons, and reset puts it back")
 local function move()
     group("RIGHT")
-    OverpowerAlertDB.general.groupPos = { "CENTER", "CENTER", -200, -50 }
+    ns.General().groupPos = { "CENTER", "CENTER", -200, -50 }
     ns.ResetPosition("overpower", "icon") -- clears it
-    expect(OverpowerAlertDB.general.groupPos).toBe(nil)
+    expect(ns.General().groupPos).toBe(nil)
     ns.ShowIcon("overpower")
     mock.waitFrames(2)
     local x, y = icon("Overpower"):GetCenter()
@@ -196,15 +196,15 @@ local function plateCopy(ability)
 end
 
 local function bothOn(value)
-    OverpowerAlertDB.revenge.iconOnNameplate = value
-    OverpowerAlertDB.revenge.nameplateBoth = value
+    ns.Config("revenge").iconOnNameplate = value
+    ns.Config("revenge").nameplateBoth = value
 end
 
 @test("nameplate only: the icon is on the nameplate, not in the group")
 local function plateOnly()
     mock.unitOf("target"):showNameplate()
     group("RIGHT")
-    OverpowerAlertDB.revenge.iconOnNameplate = true
+    ns.Config("revenge").iconOnNameplate = true
     ns.ShowIcon("overpower")
     ns.ShowIcon("revenge")
     mock.waitFrames(2)
@@ -219,11 +219,11 @@ local function bothPlaces()
     mock.unitOf("target"):showNameplate()
     group("RIGHT")
     bothOn(true)
-    OverpowerAlertDB.overpower.iconOnNameplate = false -- in the group, not on the nameplate (its default)
+    ns.Config("overpower").iconOnNameplate = false -- in the group, not on the nameplate (its default)
     ns.ShowIcon("overpower")
     ns.ShowIcon("revenge")
     mock.waitFrames(2)
-    OverpowerAlertDB.overpower.iconOnNameplate = true
+    ns.Config("overpower").iconOnNameplate = true
     expect(offset(icon("Revenge"))).toBe(70) -- in the group, after Overpower
     local copy = plateCopy("Revenge")
     expect(copy ~= nil).toBe(true)

@@ -70,6 +70,13 @@ The other Overpower addon says this value can be secret in combat in some situat
 - `C_SpecializationInfo.GetActiveSpecGroup()` exists and returns `1` on a character with only primary talents (verified in-game). The classic global `GetActiveTalentGroup` is `nil`.
 - **Unverified:** what it returns on secondary talents (presumably `2`) and which event a swap sends. The per-talent-set settings check the set on `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_SPECIALIZATION_CHANGED`, `PLAYER_TALENT_UPDATE`, `TRAIT_CONFIG_UPDATED` and `SPELLS_CHANGED` (the spellbook changes on a swap), and at login. Once someone has secondary talents, check with: `/run print(C_SpecializationInfo.GetActiveSpecGroup())` on each set, and watch those events while swapping.
 
+### Profile export strings (`C_EncodingUtil`)
+
+- Export strings are `!OPA1!` followed by Base64 of a Deflate-compressed CBOR payload, made with `C_EncodingUtil.SerializeCBOR`, `CompressString(s, Enum.CompressionMethod.Deflate)` and `EncodeBase64`. Import uses the reverses.
+- In the wowlua emulator all of these exist for Forever and round-trip tables, including mixed keys, floats and booleans. A 1-profile export is about 500 characters. Bad Base64 and bad compressed data return nothing rather than raising an error, and bad CBOR raises one, so import checks both.
+- **Verified in game:** the live Forever client has the same functions. `/run local E=C_EncodingUtil print(E and E.DeserializeCBOR(E.DecompressString(E.DecodeBase64(E.EncodeBase64(E.CompressString(E.SerializeCBOR({a=1}),Enum.CompressionMethod.Deflate))),Enum.CompressionMethod.Deflate)).a)` prints `1`. Exporting and importing a profile works in game, and an existing pre-profile `OverpowerAlertDB` upgraded with the settings intact after a full restart.
+- Testing the profile upgrade: `mock.reloadUI()` in a wowlua test reloads the addon with the saved variables kept and runs the test again from the top, so a test can put old-format settings in place, reload, and check the upgrade.
+
 ## How Overpower Alert detects procs
 
 The addon tracks each ability's **opening** in every stance, and decides separately whether to alert.

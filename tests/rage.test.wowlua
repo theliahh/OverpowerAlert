@@ -5,6 +5,8 @@ import * as mock from "wowlua:mock"
 
 config({ profile = "warrior" })
 
+local _, ns = ...
+
 local REVENGE = 25288
 local usable, noPower = true, false
 
@@ -17,13 +19,13 @@ local function setup()
         if id == REVENGE then return usable, noPower end
         return false, false
     end)
-    OverpowerAlertDB.revenge.tintNoRage = true
+    ns.Config("revenge").tintNoRage = true
     mock.player:enterCombat()
 end
 
 @afterEach
 local function settle()
-    OverpowerAlertDB.revenge.tintNoRage = false
+    ns.Config("revenge").tintNoRage = false
     mock.waitSeconds(6)
     mock.player:leaveCombat()
 end
@@ -72,7 +74,7 @@ end
 
 @test("off: never tinted")
 local function off()
-    OverpowerAlertDB.revenge.tintNoRage = false
+    ns.Config("revenge").tintNoRage = false
     block()
     setRage(false)
     expect(tinted()).toBe(false)

@@ -6,6 +6,8 @@ import * as mock from "wowlua:mock"
 
 config({ profile = "warrior" })
 
+local _, ns = ...
+
 local EXECUTE = 20662 -- the rank the warrior profile knows
 local STANCES = { 2457, 71, 2458 } -- Battle, Defensive, Berserker
 local stance = 1
@@ -76,6 +78,116 @@ local function usableEnds()
     setUsable(false)
     mock.waitSeconds(1.5)
     expect(icon()).never.toBeShown()
+end
+
+local function countAlerts()
+    local count = 0
+    local real = ns.PreviewAlert
+    ns.PreviewAlert = function(key, ...)
+        if key == "execute" then count = count + 1 end
+        return real(key, ...)
+    end
+    return function()
+        ns.PreviewAlert = real
+        return count
+    end
+end
+
+@test("switching back to Battle Stance doesn't alert again while the game catches up")
+local function battleAgain()
+    local alerts = countAlerts()
+    setUsable(true)
+    stance = 2
+    usable = false
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(1)
+    -- Back to Battle: for a moment the game still says it isn't usable
+    -- (seen in-game), then catches up.
+    stance = 1
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(0.1)
+    expect(icon()).toBeShown()
+    setUsable(true)
+    mock.waitSeconds(1)
+    expect(icon()).toBeShown()
+    expect(alerts()).toBe(1)
+end
+
+@test("back in Battle Stance and still not usable once settled: it's over")
+local function battleOver()
+    setUsable(true)
+    stance = 2
+    usable = false
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(1)
+    stance = 1
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(2) -- past the settle time and the fade
+    expect(icon()).never.toBeShown()
+end
+
+-- In Defensive Stance, ticked: the icon follows the target's health. The
+-- real alpha is secret, so these stand in for it.
+local function body()
+    return (icon():GetChildren()) -- the icon's look; its alpha is the one set
+end
+
+local function defensive(alpha)
+    OverpowerAlertDB.execute.stances.defensive = true
+    mock.stub(ns, "ExecuteAlpha", function() return alpha.value end)
+    stance = 2
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(0.2)
+end
+
+@test("Defensive Stance, ticked: the icon is see-through above 20%, shown below, with no alert")
+local function watchDefensive()
+    local alerts = countAlerts()
+    local alpha = { value = 0 }
+    defensive(alpha)
+    expect(icon()).toBeShown()
+    expect(body():GetAlpha()).toBe(0)
+    alpha.value = 1 -- the target drops below 20%
+    mock.waitSeconds(0.2)
+    expect(body():GetAlpha()).toBe(1)
+    mock.waitSeconds(3)
+    expect(icon()).toBeShown()
+    expect(alerts()).toBe(0) -- no sound or text
+    expect(_G["OverpowerAlertExecuteTextFrame"]).never.toBeShown()
+    OverpowerAlertDB.execute.stances.defensive = false
+end
+
+@test("Defensive Stance, not ticked: nothing")
+local function watchUnticked()
+    stance = 2
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(0.5)
+    expect(icon()).never.toBeShown()
+end
+
+@test("from watching to Battle Stance below 20%: a real alert, in full")
+local function watchToBattle()
+    local alerts = countAlerts()
+    local alpha = { value = 1 }
+    defensive(alpha)
+    stance = 1
+    setUsable(true)
+    mock.waitSeconds(0.2)
+    expect(alerts()).toBe(1)
+    expect(icon()).toBeShown()
+    expect(body():GetAlpha()).toBe(1)
+    OverpowerAlertDB.execute.stances.defensive = false
+end
+
+@test("from watching to Battle Stance above 20%: it goes")
+local function watchToBattleAbove()
+    local alpha = { value = 0 }
+    defensive(alpha)
+    stance = 1
+    mock.fireEvent("UPDATE_SHAPESHIFT_FORM")
+    mock.waitSeconds(2.5)
+    expect(icon()).never.toBeShown()
+    OverpowerAlertDB.execute.stances.defensive = false
 end
 
 @test("switching to Defensive Stance keeps it up")

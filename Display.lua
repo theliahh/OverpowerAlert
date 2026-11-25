@@ -237,6 +237,27 @@ local function SetGlow(el, on)
     end
 end
 
+-- Watching (Execute in Defensive Stance, ns.ExecuteWatch): the icon is up but
+-- its look is see-through except while the target is below 20% health. The
+-- alpha comes from the target's secret health, so it's set, never read.
+local WATCH_CHECK = 0.05
+
+local function ApplyWatchAlpha(el)
+    local alpha = 1
+    if el.watching then
+        alpha = ns.ExecuteAlpha and ns.ExecuteAlpha()
+        if alpha == nil then alpha = 0 end
+    end
+    pcall(el.body.SetAlpha, el.body, alpha)
+    if el.plateCopy then pcall(el.plateCopy.SetAlpha, el.plateCopy, alpha) end
+end
+
+local function SetWatching(el, on)
+    el.watching = on and true or false
+    el.nextWatchCheck = 0
+    ApplyWatchAlpha(el)
+end
+
 local function RefreshIconTexture(el, ability)
     local id = ns.GetSpellID(ability.key) or ability.ids[#ability.ids]
     local tex = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(id)
@@ -295,7 +316,12 @@ function ns.LayoutGroup()
             el.groupJoined = nil
         end
     end
-    table.sort(items, function(a, b) return a.el.groupJoined < b.el.groupJoined end)
+    -- A watching icon (usually see-through) goes last, so its empty spot
+    -- doesn't leave a gap between the others.
+    table.sort(items, function(a, b)
+        if a.el.watching ~= b.el.watching then return not a.el.watching end
+        return a.el.groupJoined < b.el.groupJoined
+    end)
 
     -- Each icon's centre, as a distance along the growing direction. The
     -- first icon sits on the spot; a centered group has its middle there.
@@ -546,7 +572,22 @@ function ns.ApplyIconStyle(abilityKey)
 end
 
 function ns.ShowIcon(abilityKey)
-    ShowElement(Element(abilityKey, "icon"))
+    local el = Element(abilityKey, "icon")
+    -- A real alert (or preview) shows in full, not by health.
+    if el and el.watching then SetWatching(el, false) end
+    ShowElement(el)
+end
+
+-- Shows the icon by the target's health (see ApplyWatchAlpha), unless a real
+-- alert has it up already. It stays while ns.ExecuteWatch() holds.
+function ns.WatchIcon(abilityKey)
+    local el = Element(abilityKey, "icon")
+    if not el or el.unlocked then return end
+    if el.frame:IsShown() and not el.fading then return end
+    ShowElement(el)
+    el.isPreview = false
+    SetWatching(el, true)
+    ns.LayoutGroup()
 end
 
 --------------------------------------------------------------------------------
@@ -605,7 +646,11 @@ function ns.InitDisplay()
         ApplyPosition(textEl)
         ns.ApplyTextStyle(ability.key)
 
-        local iconEl = CreateElement(ability, "icon", d.iconX, d.iconY, isActive)
+        local iconEl
+        iconEl = CreateElement(ability, "icon", d.iconX, d.iconY, function()
+            if isActive() then return true end
+            return iconEl.watching and ns.ExecuteWatch and ns.ExecuteWatch() or false
+        end)
         local f = iconEl.frame
         -- Everything visible goes on `body`, so the icon can be hidden (no
         -- nameplate, no fallback) while the frame keeps running its timing.
@@ -630,8 +675,16 @@ function ns.InitDisplay()
         iconEl.onUpdate = function()
             PlaceIcon(iconEl)
             UpdateCooldownLook(iconEl)
+            if iconEl.watching then
+                local now = GetTime()
+                if now >= (iconEl.nextWatchCheck or 0) then
+                    iconEl.nextWatchCheck = now + WATCH_CHECK
+                    ApplyWatchAlpha(iconEl)
+                end
+            end
         end
         f:HookScript("OnHide", function()
+            if iconEl.watching then SetWatching(iconEl, false) end
             SetGlow(iconEl, false)
             SetCoolingDown(iconEl, false)
             SetShortOnRage(iconEl, false)
@@ -680,6 +733,7 @@ function ns.SetUnlocked(abilityKey, kind, value)
     local el = Element(abilityKey, kind)
     if not el then return end
     el.unlocked = value and true or false
+    if el.watching then SetWatching(el, false) end -- moving it shows it in full
     el.fade:Stop()
     el.fading = false
     el.frame:EnableMouse(el.unlocked)

@@ -17,7 +17,7 @@ The addon works on its own once installed. The Overpower, Revenge and Victory Ru
 - **Overpower:** available for 5 seconds after your target dodges *your* attack (other players' dodged attacks don't count). It can only be cast in Battle Stance.
 - **Revenge:** available for 5 seconds after you block, dodge or parry. It can only be cast in Defensive Stance.
 - **Victory Rush:** available for 20 seconds after you kill an enemy that gives experience or honor. By default it only shows the icon, with no sound or text.
-- **Execute** (off by default): available while your target is below 20% health, in Battle or Berserker Stance. When turned on it only shows the icon by default, with no sound or text. It has no set length: the icon stays up until the target is out of Execute range, dies or you change target, and using Execute doesn't hide it. There's no countdown or cooldown option for it.
+- **Execute** (off by default): available while your target is below 20% health, in Battle or Berserker Stance. When turned on it only shows the icon by default, with no sound or text. It has no set length: the icon stays up until the target is out of Execute range, dies or you change target, and using Execute doesn't hide it. There's no countdown or cooldown option for it. Tick **Defensive Stance** to see it there too: the icon appears once the target is below 20%, but with no sound or text (see How it works).
 
 You choose which stances each ability alerts in: Battle, Defensive and Berserker Stance each have a checkbox. By default Overpower alerts in Battle and Berserker Stance (cast in Battle; the alert in Berserker tells you to swap), Revenge in Defensive Stance, the one it can be cast in, Victory Rush in all three, and Execute in Battle and Berserker Stance. Tick other stances to hear about an opening there too, so you can switch.
 
@@ -85,7 +85,7 @@ On WoW Forever's client, addons can't read the combat log, so the addon pieces e
 
 - **Revenge:** the game reports your own blocks, dodges and parries to addons, in any stance.
 - **Victory Rush:** the "Victorious" buff you get after a kill, which also says when the 20 seconds run out.
-- **Execute:** the game hides your target's health from addons, so the addon watches for Execute becoming usable, which the game allows only below 20% health. That only shows in Battle and Berserker Stance; in Defensive Stance the icon keeps its last state until your target changes. If the target's health ever is readable, it's used instead.
+- **Execute:** the game hides your target's health from addons, so the addon watches for Execute becoming usable, which the game allows only below 20% health. That only shows in Battle and Berserker Stance; in Defensive Stance an Execute already up stays up until your target changes. Otherwise, with Defensive Stance ticked, the icon is shown see-through and the game itself makes it visible below 20%: the addon hands the hidden health to the icon without reading it. Because the addon never learns when the target crosses 20%, it can't play a sound or show text there. Switching to Battle or Berserker Stance below 20% gives the full alert. If the target's health ever is readable, it's used instead.
 - **Overpower:** a quirk carried over from the original game. An Overpower opening is tracked as a hidden combo point on your character, which appears when your target dodges your attack and lasts 5 seconds, whatever stance you're in.
 - **All:** the ability turning usable in its own stance is used as a backup signal.
 

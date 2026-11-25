@@ -927,8 +927,12 @@ end
 -- usable on a target in range of it, and only in Battle or Berserker Stance.
 -- Health is used instead whenever it happens to be readable. In Defensive
 -- Stance with health hidden there's no way to tell, so the last answer stands
--- until the target changes.
+-- until the target changes; if it isn't up, the icon can still follow the
+-- target's health (ns.ExecuteWatch, below).
 local executeUp = false
+-- The stance at the last check, and when the player switched into it.
+local executeStance, executeStanceAt = nil, -math.huge
+local EXECUTE_SETTLE = 0.5 -- seconds the game may lag after a stance switch
 
 local function SafeUnit(fn, ...)
     if not fn then return nil end
@@ -946,13 +950,28 @@ local function ReadExecuteRange(stance)
         return hp / max < 0.2
     end
     if stance and ns.ABILITY_BY_KEY.execute.castIn[stance] then
-        return ns.IsUsable("execute")
+        local usable = ns.IsUsable("execute")
+        -- Right after switching into Battle or Berserker Stance the game can
+        -- still say "not usable" for a moment before it catches up (seen
+        -- in-game): don't take that as the target healing, or every switch
+        -- back would end Execute and alert again.
+        if not usable and executeUp and GetTime() - executeStanceAt < EXECUTE_SETTLE then
+            return true
+        end
+        return usable
     end
     return executeUp
 end
 
 function CheckExecute(stance)
     if not state.execute.spellID then return end
+    if stance ~= executeStance then
+        executeStance, executeStanceAt = stance, GetTime()
+        -- Look again once it's settled, in case nothing else does.
+        if stance and ns.ABILITY_BY_KEY.execute.castIn[stance] then
+            C_Timer.After(EXECUTE_SETTLE + 0.05, function() CheckExecute(ns.CurrentStance()) end)
+        end
+    end
     local up = ReadExecuteRange(stance)
     if up and not executeUp then
         OnTrigger("execute", math.huge) -- lasts until it's seen to end
@@ -960,6 +979,51 @@ function CheckExecute(stance)
         EndOpening("execute")
     end
     executeUp = up
+    if ns.WatchIcon and ns.ExecuteWatch() then ns.WatchIcon("execute") end
+end
+
+-- Execute in a stance it can't be cast in (Defensive), ticked for it: the game
+-- never says it's usable there and the target's health is secret, but the
+-- secret health can still drive what's drawn (verified in-game). So the icon
+-- is shown with its alpha set from the target's health through a "below 20%"
+-- curve: it appears below 20% without the addon ever knowing. Only the icon:
+-- no sound or text, since nothing tells the addon when it happens.
+local executeCurve
+
+function ns.ExecuteCurve()
+    if executeCurve == nil then
+        executeCurve = false
+        if C_CurveUtil and C_CurveUtil.CreateCurve and Enum.LuaCurveType then
+            local ok, curve = pcall(C_CurveUtil.CreateCurve)
+            if ok and curve and pcall(curve.SetType, curve, Enum.LuaCurveType.Step)
+                and pcall(curve.AddPoint, curve, 0, 1)        -- below 20%: shown
+                and pcall(curve.AddPoint, curve, 0.2, 0) then -- 20% and up: hidden
+                executeCurve = curve
+            end
+        end
+    end
+    return executeCurve or nil
+end
+
+-- Whether the Execute icon should follow the target's health now.
+function ns.ExecuteWatch()
+    if executeUp or not state.execute.spellID then return false end
+    local cfg = ns.Config("execute")
+    if not (cfg.enabled and cfg.showIcon) then return false end
+    local stance = ns.CurrentStance()
+    if not stance or ns.ABILITY_BY_KEY.execute.castIn[stance] or not cfg.stances[stance] then return false end
+    if not SafeUnit(UnitExists, "target") or SafeUnit(UnitIsDeadOrGhost, "target") then return false end
+    if SafeUnit(UnitCanAttack, "player", "target") == false then return false end
+    return UnitHealthPercent ~= nil and ns.ExecuteCurve() ~= nil
+end
+
+-- The icon's alpha for the target's health: 1 below 20%, 0 otherwise. A
+-- secret value on this client, for handing straight to SetAlpha.
+function ns.ExecuteAlpha()
+    local curve = ns.ExecuteCurve()
+    if not (curve and UnitHealthPercent) then return nil end
+    local ok, alpha = pcall(UnitHealthPercent, "target", false, curve)
+    if ok then return alpha end
 end
 
 -- A new target starts over: its health has nothing to do with the last one's.
@@ -1166,6 +1230,8 @@ SlashCmdList.OVERPOWERALERT = function(msg)
         ns.ToggleProbe()
     elseif cmd == "glowprobe" then -- TEMPORARY, see the glow probe below
         ns.ToggleGlowProbe()
+    elseif cmd == "execprobe" then -- TEMPORARY, see the Execute probe below
+        ns.ToggleExecProbe()
     elseif ns.OpenOptions then
         ns.OpenOptions()
     end
@@ -1414,6 +1480,260 @@ do
         realAlert = ns.PreviewAlert
         ns.PreviewAlert = LoggedAlert
         print("|cff33ccffOPA glow|r probe on (/opa glowprobe again to stop)")
+        Poll()
+    end
+end
+
+--------------------------------------------------------------------------------
+-- TEMPORARY probe (/opa execprobe): can anything show the target below 20%
+-- health in Defensive Stance, where Execute isn't usable and so the game
+-- never says it is? Target health is secret, but secret values can still be
+-- handed to frames (that's how Blizzard's own health bars work). Three boxes
+-- at the top of the screen are driven by the hidden health without reading it:
+--   A  red, alpha from UnitHealthPercent with a "below 20%" curve (0-1 scale)
+--   B  red, the same with the curve on a 0-100 scale (one of A/B is right)
+--   C  green, a bar filled to the target's health
+-- If A or B lights up below 20% in Defensive Stance, the addon can show the
+-- Execute icon there the same way. Logs to chat, on change:
+--   STANCE / TARGET   the stance, and the target
+--   USABLE            IsSpellUsable(Execute), and IsUsableAction on its button
+--   RANGE             IsSpellInRange(Execute)
+--   PCT / ALPHA       the curve's output, and reading back box A's/B's alpha
+--   BAR               reading back box C's value and fill width
+--   ACTIVE            whether this addon thinks Execute is up
+--   CTEXT             combat text events (SPELL_ACTIVE and the like)
+--   ERR               anything that refused a secret value
+-- Remove once answered.
+--------------------------------------------------------------------------------
+
+do
+    local probe, t0, ui
+    local last = {}
+    local EXECUTE_IDS = {}
+    for _, id in ipairs(ns.ABILITY_BY_KEY.execute.ids) do EXECUTE_IDS[id] = true end
+    -- Combat text that's only noise here.
+    local QUIET_CTEXT = {
+        DAMAGE = true, SPELL_DAMAGE = true, DAMAGE_CRIT = true, SPELL_DAMAGE_CRIT = true,
+        HEAL = true, HEAL_CRIT = true, PERIODIC_HEAL = true, ENERGIZE = true, PERIODIC_ENERGIZE = true,
+        MISS = true, DODGE = true, PARRY = true, BLOCK = true, ABSORB = true, RESIST = true,
+    }
+
+    local function Show(v)
+        if issecretvalue and issecretvalue(v) then return "<secret>" end
+        return tostring(v)
+    end
+
+    local function Out(text)
+        print(string.format("|cffff3333OPA exec|r %.2f %s", GetTime() - t0, text))
+    end
+
+    local function Changed(key, text)
+        if last[key] ~= text then
+            last[key] = text
+            Out(text)
+        end
+    end
+
+    -- A curve that's 1 below `threshold` and 0 from it up.
+    local function BelowCurve(threshold, top)
+        if not (C_CurveUtil and C_CurveUtil.CreateCurve) then return nil, "no C_CurveUtil.CreateCurve" end
+        local ok, curve = pcall(C_CurveUtil.CreateCurve)
+        if not ok or not curve then return nil, "CreateCurve: " .. tostring(curve) end
+        if curve.SetType and Enum.LuaCurveType and Enum.LuaCurveType.Step then
+            local okType, err = pcall(curve.SetType, curve, Enum.LuaCurveType.Step)
+            if not okType then return nil, "SetType: " .. tostring(err) end
+        end
+        local okA, errA = pcall(curve.AddPoint, curve, 0, 1)
+        local okB, errB = pcall(curve.AddPoint, curve, threshold, 0)
+        pcall(curve.AddPoint, curve, top, 0)
+        if not (okA and okB) then return nil, "AddPoint: " .. tostring(errA or errB) end
+        return curve
+    end
+
+    -- What the curve gives for known inputs, to check its shape.
+    local function DescribeCurve(curve, a, b)
+        if not curve.Evaluate then return "no Evaluate" end
+        local okA, va = pcall(curve.Evaluate, curve, a)
+        local okB, vb = pcall(curve.Evaluate, curve, b)
+        return string.format("f(%s)=%s f(%s)=%s", a, okA and Show(va) or "err", b, okB and Show(vb) or "err")
+    end
+
+    local function Box(x, r, g, b, label)
+        local f = CreateFrame("Frame", nil, UIParent)
+        f:SetSize(40, 40)
+        f:SetPoint("TOP", UIParent, "TOP", x, -120)
+        f:SetFrameStrata("HIGH")
+        local border = f:CreateTexture(nil, "BACKGROUND")
+        border:SetPoint("TOPLEFT", -2, 2)
+        border:SetPoint("BOTTOMRIGHT", 2, -2)
+        border:SetColorTexture(1, 1, 1, 0.4)
+        local fill = f:CreateTexture(nil, "ARTWORK")
+        fill:SetAllPoints()
+        fill:SetColorTexture(r, g, b, 1)
+        local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("TOP", f, "BOTTOM", 0, -4)
+        text:SetText(label)
+        f.fill = fill
+        return f
+    end
+
+    local function BuildUI()
+        ui = {}
+        ui.a = Box(-70, 1, 0.1, 0.1, "A <20% (0-1)")
+        ui.b = Box(0, 1, 0.1, 0.1, "B <20% (0-100)")
+        local c = CreateFrame("Frame", nil, UIParent)
+        c:SetSize(40, 40)
+        c:SetPoint("TOP", UIParent, "TOP", 70, -120)
+        c:SetFrameStrata("HIGH")
+        local bg = c:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+        local bar = CreateFrame("StatusBar", nil, c)
+        bar:SetAllPoints()
+        bar:SetOrientation("VERTICAL")
+        bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+        bar:SetStatusBarColor(0.1, 1, 0.1)
+        bar:SetMinMaxValues(0, 1)
+        local text = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("TOP", c, "BOTTOM", 0, -4)
+        text:SetText("C health")
+        ui.c, ui.bar = c, bar
+
+        local curveA, errA = BelowCurve(0.2, 1)
+        local curveB, errB = BelowCurve(20, 100)
+        ui.curveA, ui.curveB = curveA, curveB
+        Out("curve A (0-1): " .. (curveA and DescribeCurve(curveA, 0.1, 0.5) or ("FAILED " .. tostring(errA))))
+        Out("curve B (0-100): " .. (curveB and DescribeCurve(curveB, 10, 50) or ("FAILED " .. tostring(errB))))
+        Out("UnitHealthPercent " .. (UnitHealthPercent and "exists" or "MISSING")
+            .. ", CurveConstants " .. (rawget(_G, "CurveConstants") and "exists" or "missing"))
+    end
+
+    local function ShowUI(shown)
+        ui.a:SetShown(shown)
+        ui.b:SetShown(shown)
+        ui.c:SetShown(shown)
+    end
+
+    -- Drives a box's alpha from the curve, without reading the health.
+    local function DriveBox(key, box, curve)
+        if not curve then box.fill:SetAlpha(0.15); return end
+        local ok, value = pcall(UnitHealthPercent, "target", false, curve)
+        if not ok then
+            Changed(key .. "err", "ERR " .. key .. " UnitHealthPercent: " .. tostring(value))
+            return
+        end
+        local okSet, err = pcall(box.fill.SetAlpha, box.fill, value)
+        if not okSet then
+            Changed(key .. "err", "ERR " .. key .. " SetAlpha(secret): " .. tostring(err))
+            return
+        end
+        Changed(key .. "pct", string.format("PCT %s curve=%s", key, Show(value)))
+        Changed(key .. "alpha", string.format("ALPHA %s readback=%s", key, Show(box.fill:GetAlpha())))
+    end
+
+    local function DriveBar()
+        local okMax, maxHealth = pcall(UnitHealthMax, "target")
+        local okCur, health = pcall(UnitHealth, "target")
+        if not (okMax and okCur) then
+            Changed("barerr", "ERR C UnitHealth: " .. tostring(okMax and health or maxHealth))
+            return
+        end
+        local ok1, err1 = pcall(ui.bar.SetMinMaxValues, ui.bar, 0, maxHealth)
+        local ok2, err2 = pcall(ui.bar.SetValue, ui.bar, health)
+        if not (ok1 and ok2) then
+            Changed("barerr", "ERR C StatusBar(secret): " .. tostring(err1 or err2))
+            return
+        end
+        local tex = ui.bar:GetStatusBarTexture()
+        local okW, width = pcall(tex.GetHeight, tex) -- vertical bar: the fill's height
+        Changed("bar", string.format("BAR C value=%s fill=%s", Show(ui.bar:GetValue()), okW and Show(width) or "err"))
+    end
+
+    -- The action button with Execute on it, if any.
+    local function ExecuteSlot()
+        for slot = 1, 180 do
+            local ok, kind, id = pcall(GetActionInfo, slot)
+            if ok and kind == "spell" and not (issecretvalue and issecretvalue(id)) and EXECUTE_IDS[id] then
+                return slot
+            end
+        end
+    end
+
+    local function Poll()
+        Changed("stance", "STANCE " .. tostring(ns.CurrentStance()))
+        local exists = UnitExists("target")
+        Changed("target", "TARGET " .. (exists and Show(UnitName("target")) or "none"))
+        local id = ns.GetSpellID("execute")
+        if id then
+            local ok, usable, noPower = pcall(C_Spell.IsSpellUsable, id)
+            local u = ok and (Show(usable) .. "/" .. Show(noPower)) or "err"
+            local slot = ExecuteSlot()
+            local a = "no button"
+            if slot then
+                local isUsable = (C_ActionBar and C_ActionBar.IsUsableAction) or rawget(_G, "IsUsableAction")
+                local okA, au, an = pcall(isUsable, slot)
+                a = "slot " .. slot .. " " .. (okA and (Show(au) .. "/" .. Show(an)) or "err")
+            end
+            Changed("usable", string.format("USABLE spell=%s action=%s", u, a))
+            if C_Spell.IsSpellInRange and exists then
+                local okR, inRange = pcall(C_Spell.IsSpellInRange, id, "target")
+                Changed("range", "RANGE " .. (okR and Show(inRange) or "err"))
+            end
+        else
+            Changed("usable", "USABLE Execute not known")
+        end
+        Changed("active", "ACTIVE (addon) " .. tostring(ns.IsActive("execute")))
+        ShowUI(exists)
+        if exists then
+            DriveBox("A", ui.a, ui.curveA)
+            DriveBox("B", ui.b, ui.curveB)
+            DriveBar()
+        end
+    end
+
+    local function OnEvent(_, event, ...)
+        if event == "COMBAT_TEXT_UPDATE" then
+            local kind = ...
+            local k = Show(kind)
+            if QUIET_CTEXT[k] then return end
+            local info = "?"
+            local GetCTInfo = rawget(_G, "GetCurrentCombatTextEventInfo")
+            if GetCTInfo then
+                local ok, a, b = pcall(GetCTInfo)
+                info = ok and (Show(a) .. " " .. Show(b)) or "err"
+            end
+            Out("CTEXT " .. k .. " " .. info)
+        end
+        Poll()
+    end
+
+    function ns.ToggleExecProbe()
+        if probe then
+            probe:UnregisterAllEvents()
+            probe:SetScript("OnUpdate", nil)
+            probe = nil
+            ShowUI(false)
+            print("|cffff3333OPA exec|r probe off")
+            return
+        end
+        t0 = GetTime()
+        wipe(last)
+        if not ui then BuildUI() end
+        probe = CreateFrame("Frame")
+        probe:RegisterEvent("PLAYER_TARGET_CHANGED")
+        probe:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+        probe:RegisterEvent("SPELL_UPDATE_USABLE")
+        pcall(probe.RegisterEvent, probe, "COMBAT_TEXT_UPDATE")
+        pcall(probe.RegisterUnitEvent, probe, "UNIT_HEALTH", "target")
+        probe:SetScript("OnEvent", OnEvent)
+        local elapsed = 0
+        probe:SetScript("OnUpdate", function(_, dt)
+            elapsed = elapsed + dt
+            if elapsed < 0.1 then return end
+            elapsed = 0
+            Poll()
+        end)
+        print("|cffff3333OPA exec|r probe on (/opa execprobe again to stop). Watch the boxes at the top of the screen.")
         Poll()
     end
 end

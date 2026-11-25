@@ -53,7 +53,8 @@ L.EXECUTE = "Execute"
 L.EXECUTE_ALERT_TEXT = "EXECUTE!"
 L.EXECUTE_DESCRIPTION = "Available while your target is below 20% health. Can be cast in Battle and Berserker Stance.\n" ..
     "The game hides your target's health from addons, so it's read from Execute becoming usable,\n" ..
-    "which only shows in those two stances."
+    "which only shows in those two stances. Tick Defensive Stance to still see the icon there: it\n" ..
+    "appears below 20%, but with no sound or text, since the addon can't tell when that happens."
 
 L.BATTLE_STANCE = "Battle Stance"
 L.DEFENSIVE_STANCE = "Defensive Stance"

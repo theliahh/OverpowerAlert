@@ -66,6 +66,8 @@ L.BERSERKER_STANCE = "Berserker Stance"
 
 L.GENERAL = "General"
 L.GENERAL_DESCRIPTION = "Settings shared by every ability."
+L.COMBAT_ONLY = "Only show alerts in combat"
+L.COMBAT_ONLY_HINT = "Alerts still up when combat ends are hidden."
 L.PROFILE = "Profile"
 L.PROFILE_FOR_SET = "Profile (%s)"               -- %s: SPEC_PRIMARY or SPEC_SECONDARY
 L.PROFILE_NEW = "New"

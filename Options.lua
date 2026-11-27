@@ -161,6 +161,17 @@ local function Label(parent, text, template)
     return fs
 end
 
+-- A faint line across the page, `gap` below `anchor`, between sections.
+-- Returns it, for the next section to hang from.
+local function Divider(parent, anchor, gap)
+    local line = parent:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(1, 1, 1, 0.15)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
+    line:SetPoint("RIGHT", parent, "RIGHT", -16, 0)
+    return line
+end
+
 local unlockButtons = {} -- ["<abilityKey>/<kind>"] = { button, unlockText, lockText }
 
 function ns.OnUnlockChanged(abilityKey, kind, isUnlocked)
@@ -803,7 +814,7 @@ local function BuildGeneralPage(content)
     -- Talent sets: a profile for primary and one for secondary talents
     ---------------------------------------------------------------------------
     local specLabel = Label(content, L.TALENT_SETS)
-    specLabel:SetPoint("TOPLEFT", profileHint, "BOTTOMLEFT", 0, -20)
+    specLabel:SetPoint("TOPLEFT", Divider(content, profileHint, 14), "BOTTOMLEFT", 0, -14)
 
     -- The talent set the player is on now, whether or not it's turned on.
     local currentSet = Label(content, "", "GameFontHighlight")
@@ -862,8 +873,22 @@ local function BuildGeneralPage(content)
         ns.RefreshCurrentSet()
     end
 
+    ---------------------------------------------------------------------------
+    -- Only show alerts in combat
+    ---------------------------------------------------------------------------
+    local combatOnly = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+    combatOnly:SetPoint("TOPLEFT", Divider(content, specHint, 14), "BOTTOMLEFT", -4, -8)
+    local combatOnlyText = combatOnly.Text or combatOnly:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    combatOnlyText:SetPoint("LEFT", combatOnly, "RIGHT", 4, 1)
+    combatOnlyText:SetText(L.COMBAT_ONLY)
+    combatOnly:SetScript("OnShow", function(self) self:SetChecked(ns.General().combatOnly) end)
+    combatOnly:SetScript("OnClick", function(self) ns.SetCombatOnly(self:GetChecked()) end)
+    local combatOnlyHint = Label(content, L.COMBAT_ONLY_HINT, "GameFontDisableSmall")
+    combatOnlyHint:SetJustifyH("LEFT")
+    combatOnlyHint:SetPoint("TOPLEFT", combatOnly, "BOTTOMLEFT", 4, -2)
+
     local fontLabel = Label(content, L.FONT)
-    fontLabel:SetPoint("TOPLEFT", specHint, "BOTTOMLEFT", 0, -20)
+    fontLabel:SetPoint("TOPLEFT", Divider(content, combatOnlyHint, 14), "BOTTOMLEFT", 0, -14)
 
     local fontDD = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
     fontDD:SetWidth(240)
@@ -908,7 +933,7 @@ local function BuildGeneralPage(content)
     ---------------------------------------------------------------------------
     local general = ns.General
     local layoutLabel = Label(content, L.ICON_LAYOUT)
-    layoutLabel:SetPoint("TOPLEFT", sample, "BOTTOMLEFT", 0, -28)
+    layoutLabel:SetPoint("TOPLEFT", Divider(content, sample, 20), "BOTTOMLEFT", 0, -14)
 
     local growDD, spacingBox, unlock, reset
     local function RefreshGroupControls()
@@ -960,6 +985,7 @@ local function BuildGeneralPage(content)
     groupHint:SetPoint("TOPLEFT", unlock, "BOTTOMLEFT", 0, -10)
 
     return function()
+        combatOnly:SetChecked(ns.General().combatOnly)
         RefreshProfiles()
         fontDD:GenerateMenu()
         layoutDD:GenerateMenu()
@@ -1047,7 +1073,7 @@ function ns.CreateOptions()
         return content
     end
 
-    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 780))
+    refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 820))
     for _, ability in ipairs(ns.ABILITIES) do
         refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1570), ability)
     end

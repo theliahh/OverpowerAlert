@@ -376,6 +376,7 @@ local GENERAL_DEFAULTS = {
     iconLayout = "separate", -- or "group": side by side, growing from one spot
     groupGrow = "RIGHT",
     groupSpacing = 6,
+    combatOnly = false, -- alerts only in combat; they hide when it ends
 }
 
 local CHANNELS = { Master = true, SFX = true, Dialog = true, Ambience = true, Music = true }
@@ -404,6 +405,7 @@ local function NormalizeGeneral(general)
     if general.iconLayout ~= "group" then general.iconLayout = "separate" end
     if not ns.GROUP_GROW[general.groupGrow] then general.groupGrow = GENERAL_DEFAULTS.groupGrow end
     general.groupSpacing = Clamp(general.groupSpacing, -500, 500, GENERAL_DEFAULTS.groupSpacing)
+    general.combatOnly = general.combatOnly == true
     return general
 end
 
@@ -1060,6 +1062,12 @@ local function EndOpening(abilityKey)
     st.activeUntil, st.alerted = math.min(st.activeUntil, GetTime()), false
 end
 
+-- Whether alerts may show now: always, or only in combat (General tab).
+local inCombat = false
+function ns.AlertsAllowed()
+    return inCombat or not ns.General().combatOnly
+end
+
 -- Alert for the current opening if it hasn't been yet and everything allows
 -- it. Called whenever something relevant changes, and on a timer in combat.
 local function MaybeAlert(abilityKey)
@@ -1070,6 +1078,9 @@ local function MaybeAlert(abilityKey)
     -- On cooldown: wait for it, unless the player wants the alert anyway (the
     -- icon then shows greyed out with the cooldown swipe).
     if not cfg.showOnCooldown and OnCooldown(abilityKey) then return end
+    -- Out of combat with "only in combat" on: not yet. Entering combat while
+    -- the opening is still up alerts then.
+    if not ns.AlertsAllowed() then return end
     st.alerted = true
     ns.PreviewAlert(abilityKey)
 end
@@ -1433,6 +1444,7 @@ end
 
 -- Whether the Execute icon should follow the target's health now.
 function ns.ExecuteWatch()
+    if not ns.AlertsAllowed() then return false end
     if executeUp or not state.execute.spellID then return false end
     local cfg = ns.Config("execute")
     if not (cfg.enabled and cfg.showIcon) then return false end
@@ -1483,6 +1495,7 @@ end
 -- Whether the ability's opening is up, in any stance. Keeps the text and icon
 -- up while this is true.
 function ns.IsActive(abilityKey)
+    if not ns.AlertsAllowed() then return false end
     if InOpening(abilityKey) then return true end
     -- Victory Rush's opening runs to the buff's own end time.
     if abilityKey == "victoryrush" then return false end
@@ -1502,6 +1515,21 @@ end
 
 local function StopTicker()
     if ticker then ticker:Cancel(); ticker = nil end
+end
+
+-- Combat ended with "only in combat" on (or it was just turned on outside
+-- combat): hide every alert. An opening still up alerts again next combat.
+local function HideAllAlerts()
+    for _, ability in ipairs(ns.ABILITIES) do
+        state[ability.key].alerted = false
+        if ns.HideAlert then ns.HideAlert(ability.key) end
+    end
+end
+
+function ns.SetCombatOnly(value)
+    ns.General().combatOnly = value and true or false
+    if not ns.AlertsAllowed() then HideAllAlerts() end
+    Check()
 end
 
 local function Refresh()
@@ -1559,7 +1587,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(self.RegisterUnitEvent, self, "UNIT_HEALTH", "target")
         pcall(self.RegisterEvent, self, "NAME_PLATE_UNIT_ADDED")
         pcall(self.RegisterEvent, self, "NAME_PLATE_UNIT_REMOVED")
-        if InCombatLockdown() then StartTicker() end
+        inCombat = UnitAffectingCombat("player") and true or false
+        if inCombat then StartTicker() end
         return
     end
 
@@ -1569,10 +1598,14 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif SPEC_EVENT[event] then
         ns.CheckSpec()
     elseif event == "PLAYER_REGEN_DISABLED" then
+        inCombat = true
         -- Events can lag; check lightly while in combat as a backstop.
         StartTicker()
+        Check() -- alerts held back out of combat show now
     elseif event == "PLAYER_REGEN_ENABLED" then
+        inCombat = false
         StopTicker()
+        if not ns.AlertsAllowed() then HideAllAlerts() end
         Check()
     elseif event == "UNIT_COMBAT" then
         local unit, action, flagText = ...

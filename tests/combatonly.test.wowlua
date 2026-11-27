@@ -1,0 +1,87 @@
+-- "Only show alerts in combat" (General tab): no alerts out of combat, an
+-- opening still up shows when combat starts, and everything hides when it ends.
+import test, beforeEach, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local STANCES = { 2457, 71, 2458 } -- Battle, Defensive, Berserker
+
+@beforeEach
+local function setup()
+    mock.fake("GetShapeshiftForm", function() return 2 end) -- Defensive
+    mock.fake("GetShapeshiftFormInfo", function(i) return nil, nil, nil, STANCES[i] end)
+    ns.SetCombatOnly(true)
+end
+
+@afterEach
+local function settle()
+    ns.SetCombatOnly(false)
+    mock.player:leaveCombat()
+    mock.waitSeconds(6) -- let any opening run out
+end
+
+local function icon()
+    return _G["OverpowerAlertRevengeIconFrame"]
+end
+
+local function block()
+    mock.fireUnitEvent("UNIT_COMBAT", "player", "BLOCK", "", 100, 1)
+    mock.waitFrames(2)
+end
+
+@test("out of combat, a block doesn't alert")
+local function outOfCombat()
+    block()
+    expect(icon()).never.toBeShown()
+end
+
+@test("an opening from before combat alerts when combat starts")
+local function heldUntilCombat()
+    block()
+    expect(icon()).never.toBeShown()
+    mock.player:enterCombat()
+    mock.waitFrames(2)
+    expect(icon()).toBeShown()
+end
+
+@test("alerts up when combat ends are hidden")
+local function hiddenOnCombatEnd()
+    mock.player:enterCombat()
+    block()
+    expect(icon()).toBeShown()
+    mock.player:leaveCombat()
+    mock.waitSeconds(0.5)
+    expect(icon():IsShown()).toBe(false)
+end
+
+@test("the opening alerts again if combat starts while it's still up")
+local function realertNextCombat()
+    mock.player:enterCombat()
+    block()
+    mock.player:leaveCombat()
+    mock.waitSeconds(0.5)
+    expect(icon():IsShown()).toBe(false)
+    mock.player:enterCombat()
+    mock.waitFrames(2)
+    expect(icon()).toBeShown()
+end
+
+@test("turning it on outside combat hides alerts already up")
+local function turnOnHides()
+    ns.SetCombatOnly(false)
+    block()
+    expect(icon()).toBeShown()
+    ns.SetCombatOnly(true)
+    mock.waitSeconds(0.5)
+    expect(icon():IsShown()).toBe(false)
+end
+
+@test("with it off, alerts show out of combat")
+local function off()
+    ns.SetCombatOnly(false)
+    block()
+    expect(icon()).toBeShown()
+end

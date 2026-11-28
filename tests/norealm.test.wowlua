@@ -1,0 +1,42 @@
+-- WoW Forever has no realm name: each character's choices are saved under
+-- its name alone (names are unique across the region there).
+import test, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "norealm" })
+
+local _, ns = ...
+
+local specGroup = 1
+
+@test("the game reports no realm here")
+local function noRealm()
+    expect(GetRealmName()).toBe("")
+end
+
+@test("the talent sets' profiles are saved under the name and come back after a reload")
+local function savedAfterReload()
+    mock.stub(C_SpecializationInfo, "GetActiveSpecGroup", function() return specGroup end)
+    if not OverpowerAlertDB.reloadedForRealm then
+        ns.NewProfile("Prot")
+        ns.NewProfile("Arms")
+        ns.SetPerSpec(true)
+        ns.SetSpecProfile(1, "Prot")
+        ns.SetSpecProfile(2, "Arms")
+        local entry = OverpowerAlertDB.chars["Tester"]
+        expect(entry ~= nil).toBe(true)
+        expect(entry.perSpec).toBe(true)
+        expect(entry.specProfile[1]).toBe("Prot")
+        expect(entry.specProfile[2]).toBe("Arms")
+        OverpowerAlertDB.reloadedForRealm = true
+        mock.reloadUI()
+        return
+    end
+    expect(ns.PerSpec()).toBe(true)
+    expect(ns.SpecProfile(1)).toBe("Prot")
+    expect(ns.SpecProfile(2)).toBe("Arms")
+    expect(ns.ActiveProfileName()).toBe("Prot")
+    specGroup = 2
+    mock.fireEvent("ACTIVE_TALENT_GROUP_CHANGED", 2, 1)
+    expect(ns.ActiveProfileName()).toBe("Arms")
+end

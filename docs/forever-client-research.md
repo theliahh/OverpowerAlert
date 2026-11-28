@@ -15,6 +15,7 @@ Each finding is marked:
 - **Launch (2026-11-04):** the live client installs to `World of Warcraft\_forever_` (Battle.net product `wowf`), version **1.60.1.70790**, still TOC interface `16001`. The addon was developed in the beta install, `_classic_beta_`, which has its own `Interface\AddOns` and `WTF`, so settings don't carry over between the two on their own.
 - **Changes from beta build 70450 to launch build 70790** that matter to us: `UNIT_COMBAT`'s `amount` became secret, but we only read `event` and `flagText`, which are still plain. Nothing else we use changed: spell usability and cooldowns, `UnitPower`, nameplates, the Menu dropdown API, and the Cooldown Manager sound list. (From source: diff of the `forever` branch.)
 - Blizzard's UI source for this client is in the **`forever` branch** of [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source/tree/forever). The generated API docs are in `Interface/AddOns/Blizzard_APIDocumentationGenerated/`. Use this branch, not `live` or `classic_era`, when checking what an API does here.
+- **No realm name:** `GetRealmName()` is empty. Character names are unique across the region, so per-character data is keyed by the name alone; the addon used to need a realm and so never saved any character's profile choice (player report).
 - Addon Lua is 5.1. Use LuaJIT (installed with winget as `DEVCOM.LuaJIT`) for syntax checks: `luajit -e "assert(loadfile('File.lua'))"`. Lua 5.4 would accept syntax WoW rejects.
 
 ## Secret values
@@ -68,6 +69,7 @@ The other Overpower addon says this value can be secret in combat in some situat
 ### Talent sets (dual spec)
 
 - `C_SpecializationInfo.GetActiveSpecGroup()` exists and returns `1` on a character with only primary talents (verified in-game). The classic global `GetActiveTalentGroup` is `nil`.
+- A player with primary and secondary talents reported each set switching to its own profile within a session, so a swap is seen; the exact value and event are still unchecked.
 - **Unverified:** what it returns on secondary talents (presumably `2`) and which event a swap sends. The per-talent-set settings check the set on `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_SPECIALIZATION_CHANGED`, `PLAYER_TALENT_UPDATE`, `TRAIT_CONFIG_UPDATED` and `SPELLS_CHANGED` (the spellbook changes on a swap), and at login. Once someone has secondary talents, check with: `/run print(C_SpecializationInfo.GetActiveSpecGroup())` on each set, and watch those events while swapping.
 
 ### Profile export strings (`C_EncodingUtil`)

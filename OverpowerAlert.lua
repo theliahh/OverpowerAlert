@@ -344,7 +344,8 @@ end
 --   profiles[name]          every setting: `general` plus one table per ability
 --   chars["Name - Realm"]   { profile, perSpec, specProfile = { [1], [2] } }:
 --                           the profile each character uses, or with perSpec
---                           on, the one each talent set uses
+--                           on, the one each talent set uses. Keyed by the
+--                           name alone where the game has no realm (Forever)
 --   legacyPerSpec           the old talent-set option's mapping, handed to each
 --                           character on its first load after the upgrade
 --   dbVersion               2 once upgraded
@@ -516,12 +517,14 @@ local active, activeName -- the profile in use, and its name
 local charEntry          -- this character's entry in db.chars
 local unsavedEntry       -- stands in until the character's name is known
 
--- "Name - Realm", or nil while the game doesn't know the character yet.
+-- "Name - Realm", just the name on a client without realms (WoW Forever,
+-- where names are unique across the region), or nil while the game doesn't
+-- know the character yet.
 local function CharKey()
     local name = UnitName("player")
     local realm = GetRealmName and GetRealmName()
     if type(name) ~= "string" or name == "" or name == UNKNOWNOBJECT then return nil end
-    if type(realm) ~= "string" or realm == "" then return nil end
+    if type(realm) ~= "string" or realm == "" then return name end
     return name .. " - " .. realm
 end
 

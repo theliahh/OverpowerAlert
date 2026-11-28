@@ -42,7 +42,7 @@ Open the options with `/opa`, or from **Game Menu → Options → AddOns → Ove
   - To move the group, click **Unlock Icons**: every enabled ability's icon shows in place, and you drag the highlighted box. Right-click it to lock. Each ability's **Unlock Icon** and **Reset Position** buttons move the group too while grouped.
   - Icons shown on a nameplate aren't part of the group; they join it when they fall back to their normal position. Icon sizes are still set per ability. Your separate positions are kept if you switch back.
 
-There's also a tab for each ability, and every setting below is set separately for each one.
+There's also a tab for each ability, and every setting below is set separately for each one. A section's settings show only while its feature is turned on (the on-screen text, spell icon, nameplate, rage threshold and action bar glow), so the tab stays short; turning one off keeps its settings for next time.
 
 - **Enable:** turn that ability's alert on or off.
 - **Alert in:** the stances to alert in (see above).
@@ -58,7 +58,7 @@ There's also a tab for each ability, and every setting below is set separately f
 - **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size. Type your own text in the **Text** box to show instead (up to 40 letters; press Enter to preview it). Leave it empty for the default.
 - **Spell icon** (on by default): pops up the ability's icon. Set its size with the slider, or type it into the box beside it (10 to 200 pixels; 64 by default) and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
 - **Tint blue when short on rage** (off by default): the icon turns blue, like an action button, while you don't have enough rage to cast the ability. The game only reports this in a stance the ability can be cast in (Battle Stance for Overpower, Defensive for Revenge), so in other stances the icon stays its normal colour.
-- **Rage threshold** (0, off, by default): while the icon is up and your rage is below the number you set (1 to 100), the icon changes look, in any stance. Once your rage reaches it, the icon looks normal again. For example, set Execute to 30 to see when you have rage for a big Execute.
+- **Rage threshold** (off by default): tick **Change the icon's look while your rage is below a threshold**, then set the threshold (1 to 100 rage; 30 to start). While the icon is up and your rage is below it, the icon changes look, in any stance. Once your rage reaches it, the icon looks normal again. For example, set Execute to 30 to see when you have rage for a big Execute. A threshold set in an earlier version comes in ticked, with its number kept.
   - **Below the threshold**, choose **Tint the icon**, in a colour you pick (blue by default), or **Fade the icon out**, so the icon only appears once you have the rage.
   - Only the icon changes. The game hides your rage from addons, so the sound and text can't wait for it, and the alert still comes when the opening does.
   - Previews and an unlocked icon show the normal look.

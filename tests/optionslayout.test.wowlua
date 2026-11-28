@@ -1,0 +1,354 @@
+-- Each ability tab shows a feature's settings only while that feature is on:
+-- the rest of the page closes up under its checkbox, and the page's scroll
+-- length follows what's shown.
+import test, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+local L = ns.L
+
+@afterEach
+local function reset()
+    ns.SetProfile("Default")
+    for _, name in ipairs(ns.ProfileNames()) do
+        if name ~= "Default" then ns.DeleteProfile(name) end
+    end
+    ns.ResetProfile()
+end
+
+-- An ability's name, as its tab shows it.
+local function AbilityName(abilityKey)
+    for _, ability in ipairs(ns.ABILITIES) do
+        if ability.key == abilityKey then return ability.name end
+    end
+end
+
+-- The text a widget shows: a checkbox's label, a button's or a font string's
+-- text.
+local function TextOf(region)
+    if region.label and region.label.GetText then return region.label:GetText() end
+    if region.GetObjectType and region:GetObjectType() == "EditBox" then return nil end
+    if region.GetText then return region:GetText() end
+end
+
+-- Every frame and font string under `root`.
+local function Each(root, fn)
+    for _, region in ipairs({ root:GetRegions() }) do fn(region) end
+    for _, child in ipairs({ root:GetChildren() }) do
+        fn(child)
+        Each(child, fn)
+    end
+end
+
+-- The ability's page: the frame holding its "Show the ... icon" checkbox.
+local function Page(abilityKey)
+    local name = AbilityName(abilityKey)
+    local text = L.SHOW_ICON:format(name, name)
+    local f = EnumerateFrames()
+    while f do
+        if f.label and f.label.GetText and f.label:GetText() == text then return f:GetParent() end
+        f = EnumerateFrames(f)
+    end
+end
+
+-- The widget on the ability's page showing exactly `text`.
+local function Find(abilityKey, text)
+    expect(type(text)).toBe("string")
+    local found
+    Each(Page(abilityKey), function(region)
+        if not found and TextOf(region) == text then found = region end
+    end)
+    expect(found ~= nil).toBe(true)
+    return found
+end
+
+-- The visible edit box on the page holding `text`.
+local function FindBox(abilityKey, text)
+    local found
+    Each(Page(abilityKey), function(region)
+        if not found and region.GetObjectType and region:GetObjectType() == "EditBox"
+            and region:IsVisible() and region:GetText() == text then
+            found = region
+        end
+    end)
+    return found
+end
+
+local function ShowIconBox(abilityKey)
+    local name = AbilityName(abilityKey)
+    return Find(abilityKey, L.SHOW_ICON:format(name, name))
+end
+
+local function ShowTextBox(abilityKey)
+    return Find(abilityKey, L.SHOW_TEXT:format(ns.AlertText(abilityKey)))
+end
+
+-- Opens the options on the ability's tab and reloads it from the settings,
+-- as a profile switch does.
+local function Open(abilityKey)
+    ns.OpenOptions()
+    local panel = Page(abilityKey):GetParent():GetParent() -- page > scroll frame > panel
+    for _, child in ipairs({ panel:GetChildren() }) do
+        if child.GetText and child:GetText() == AbilityName(abilityKey) and child:IsEnabled() then
+            mock.click(child) -- the selected tab is disabled: it's already showing
+        end
+    end
+    ns.RefreshOptions()
+end
+
+local function Set(abilityKey, values)
+    local cfg = ns.Config(abilityKey)
+    for k, v in pairs(values) do cfg[k] = v end
+end
+
+--------------------------------------------------------------------------------
+-- On-screen text and spell icon
+--------------------------------------------------------------------------------
+
+@test("unticking Show text hides the text's settings and its buttons")
+local function textCollapses()
+    Set("overpower", { showText = true })
+    Open("overpower")
+    expect(Find("overpower", L.CUSTOM_TEXT)).toBeVisible()
+    expect(Find("overpower", L.TEXT_SIZE)).toBeVisible()
+    expect(Find("overpower", L.UNLOCK_TEXT)).toBeVisible()
+    mock.click(ShowTextBox("overpower"))
+    expect(ns.Config("overpower").showText).toBe(false)
+    expect(Find("overpower", L.CUSTOM_TEXT)).never.toBeVisible()
+    expect(Find("overpower", L.TEXT_SIZE)).never.toBeVisible()
+    expect(Find("overpower", L.UNLOCK_TEXT)).never.toBeVisible()
+end
+
+@test("with the text off, the Spell icon heading moves up under its checkbox")
+local function iconHeadingMoves()
+    Set("overpower", { showText = true })
+    Open("overpower")
+    local heading = Find("overpower", L.SPELL_ICON)
+    local before = heading:GetTop()
+    mock.click(ShowTextBox("overpower"))
+    expect(heading:GetTop() > before).toBe(true)
+    expect(heading:GetTop() < ShowTextBox("overpower"):GetBottom()).toBe(true)
+end
+
+@test("unticking the icon hides its settings, and the Nameplate heading moves up")
+local function iconCollapses()
+    Set("overpower", { showText = true, showIcon = true, rageEnabled = true })
+    Open("overpower")
+    local plate = Find("overpower", L.NAMEPLATE)
+    local before = plate:GetTop()
+    expect(Find("overpower", L.ICON_SIZE)).toBeVisible()
+    expect(Find("overpower", L.ICON_GLOW)).toBeVisible()
+    expect(Find("overpower", L.TINT_NO_RAGE:format(L.OVERPOWER))).toBeVisible()
+    expect(Find("overpower", L.RAGE_THRESHOLD)).toBeVisible()
+    mock.click(ShowIconBox("overpower"))
+    expect(Find("overpower", L.ICON_SIZE)).never.toBeVisible()
+    expect(Find("overpower", L.ICON_GLOW)).never.toBeVisible()
+    expect(Find("overpower", L.TINT_NO_RAGE:format(L.OVERPOWER))).never.toBeVisible()
+    expect(Find("overpower", L.RAGE_THRESHOLD)).never.toBeVisible()
+    expect(plate:GetTop() > before).toBe(true)
+end
+
+@test("turning a feature back on shows its settings as they were")
+local function settingsKept()
+    Set("overpower", { showText = true, showIcon = true, iconSize = 100, customText = "GO" })
+    Open("overpower")
+    mock.click(ShowTextBox("overpower"))
+    mock.click(ShowIconBox("overpower"))
+    mock.click(ShowTextBox("overpower"))
+    mock.click(ShowIconBox("overpower"))
+    expect(ns.Config("overpower").iconSize).toBe(100)
+    expect(ns.Config("overpower").customText).toBe("GO")
+    expect(FindBox("overpower", "GO") ~= nil).toBe(true)
+    expect(FindBox("overpower", "100") ~= nil).toBe(true)
+end
+
+@test("the page gets shorter as sections close, and longer as they open")
+local function pageHeight()
+    Set("overpower", { showText = true, showIcon = true, iconOnNameplate = true, barGlow = true })
+    Open("overpower")
+    local page = Page("overpower")
+    local full = page:GetHeight()
+    mock.click(ShowTextBox("overpower"))
+    mock.click(ShowIconBox("overpower"))
+    local short = page:GetHeight()
+    expect(short < full).toBe(true)
+    local slash = Find("overpower", L.SLASH_HINT)
+    expect(slash:GetBottom() >= page:GetBottom()).toBe(true)
+    mock.click(ShowIconBox("overpower"))
+    expect(page:GetHeight() > short).toBe(true)
+    expect(slash:GetBottom() >= page:GetBottom()).toBe(true)
+end
+
+@test("switching to a profile with the text off shows the text section closed")
+local function profileSwitch()
+    Set("overpower", { showText = true })
+    ns.NewProfile("Quiet")
+    ns.Config("overpower").showText = false
+    ns.SetProfile("Default")
+    Open("overpower")
+    expect(Find("overpower", L.TEXT_SIZE)).toBeVisible()
+    ns.SetProfile("Quiet")
+    expect(Find("overpower", L.TEXT_SIZE)).never.toBeVisible()
+end
+
+@test("with the text section closed, its checkbox still names the profile's text")
+local function showTextLabel()
+    Set("overpower", { showText = true, customText = "GO" })
+    ns.NewProfile("Plain")
+    ns.Config("overpower").showText = false
+    ns.SetProfile("Default")
+    Open("overpower")
+    local check = ShowTextBox("overpower")
+    expect(check.label:GetText()).toBe(L.SHOW_TEXT:format("GO"))
+    mock.click(check) -- closed here, and still closed in the other profile
+    ns.SetProfile("Plain")
+    expect(check.label:GetText()).toBe(L.SHOW_TEXT:format(ns.AlertText("overpower")))
+end
+
+@test("the move hint shows while the text or the icon is on")
+local function moveHint()
+    Set("overpower", { showText = false, showIcon = true })
+    Open("overpower")
+    expect(Find("overpower", L.MOVE_HINT)).toBeVisible()
+    mock.click(ShowIconBox("overpower"))
+    expect(Find("overpower", L.MOVE_HINT)).never.toBeVisible()
+    mock.click(ShowTextBox("overpower"))
+    expect(Find("overpower", L.MOVE_HINT)).toBeVisible()
+end
+
+@test("the move hint and the Nameplate heading never overlap")
+local function hintThenNameplate()
+    Set("overpower", { showText = true, showIcon = false })
+    Open("overpower")
+    local hint, plate, show = Find("overpower", L.MOVE_HINT), Find("overpower", L.NAMEPLATE), ShowIconBox("overpower")
+    expect(hint:GetTop() <= show:GetBottom()).toBe(true)
+    expect(plate:GetTop() < hint:GetBottom()).toBe(true)
+    local withHint = plate:GetTop()
+    mock.click(ShowTextBox("overpower"))
+    expect(plate:GetTop() > withHint).toBe(true)
+    expect(plate:GetTop() < show:GetBottom()).toBe(true)
+end
+
+--------------------------------------------------------------------------------
+-- Rage threshold
+--------------------------------------------------------------------------------
+
+@test("the rage threshold starts unticked, with its settings hidden")
+local function rageClosed()
+    Open("overpower")
+    expect(Find("overpower", L.RAGE_ENABLE)).toBeVisible()
+    expect(Find("overpower", L.RAGE_THRESHOLD)).never.toBeVisible()
+    expect(Find("overpower", L.RAGE_LOOK)).never.toBeVisible()
+    expect(Find("overpower", L.RAGE_COLOR)).never.toBeVisible()
+    expect(Find("overpower", L.RAGE_THRESHOLD_HINT)).never.toBeVisible()
+end
+
+@test("ticking it turns the threshold on and shows its settings, starting at 30")
+local function rageOpens()
+    Open("overpower")
+    mock.click(Find("overpower", L.RAGE_ENABLE))
+    expect(ns.Config("overpower").rageEnabled).toBe(true)
+    expect(Find("overpower", L.RAGE_THRESHOLD)).toBeVisible()
+    expect(Find("overpower", L.RAGE_LOOK)).toBeVisible()
+    expect(Find("overpower", L.RAGE_COLOR)).toBeVisible()
+    expect(Find("overpower", L.RAGE_THRESHOLD_HINT)).toBeVisible()
+    local box = FindBox("overpower", "30")
+    expect(box ~= nil).toBe(true)
+    expect((box:GetParent().Slider:GetMinMaxValues())).toBe(1)
+end
+
+@test("closing the icon section hides the rage threshold too, and it comes back ticked")
+local function rageFollowsIcon()
+    Set("overpower", { showIcon = true, rageEnabled = true })
+    Open("overpower")
+    local check = Find("overpower", L.RAGE_ENABLE)
+    mock.click(ShowIconBox("overpower"))
+    expect(check).never.toBeVisible()
+    expect(Find("overpower", L.RAGE_THRESHOLD)).never.toBeVisible()
+    mock.click(ShowIconBox("overpower"))
+    expect(check).toBeVisible()
+    expect(check:GetChecked()).toBe(true)
+    expect(Find("overpower", L.RAGE_THRESHOLD)).toBeVisible()
+end
+
+@test("the colour swatch shows only while the look is Tint")
+local function swatchTintOnly()
+    Set("overpower", { rageEnabled = true, rageLook = "fade" })
+    Open("overpower")
+    expect(Find("overpower", L.RAGE_COLOR)).never.toBeVisible()
+    Set("overpower", { rageLook = "tint" })
+    ns.RefreshOptions()
+    expect(Find("overpower", L.RAGE_COLOR)).toBeVisible()
+end
+
+--------------------------------------------------------------------------------
+-- Nameplate and action bar glow
+--------------------------------------------------------------------------------
+
+@test("unticking the nameplate anchor hides its settings, and the Action bars heading moves up")
+local function plateCollapses()
+    Set("overpower", { showIcon = true, iconOnNameplate = true })
+    Open("overpower")
+    local bars = Find("overpower", L.ACTION_BARS)
+    local before = bars:GetTop()
+    expect(Find("overpower", L.SIDE)).toBeVisible()
+    expect(Find("overpower", L.X_OFFSET)).toBeVisible()
+    expect(Find("overpower", L.NAMEPLATE_FALLBACK)).toBeVisible()
+    mock.click(Find("overpower", L.ICON_ON_NAMEPLATE))
+    expect(ns.Config("overpower").iconOnNameplate).toBe(false)
+    expect(Find("overpower", L.SIDE)).never.toBeVisible()
+    expect(Find("overpower", L.X_OFFSET)).never.toBeVisible()
+    expect(Find("overpower", L.NAMEPLATE_FALLBACK)).never.toBeVisible()
+    expect(bars:GetTop() > before).toBe(true)
+end
+
+@test("with the icon off, the nameplate settings hide and the anchor greys out")
+local function plateNeedsIcon()
+    Set("overpower", { showIcon = true, iconOnNameplate = true })
+    Open("overpower")
+    local anchor = Find("overpower", L.ICON_ON_NAMEPLATE)
+    mock.click(ShowIconBox("overpower"))
+    expect(Find("overpower", L.SIDE)).never.toBeVisible()
+    expect(anchor).toBeVisible()
+    expect(anchor:IsEnabled()).toBe(false)
+    mock.click(ShowIconBox("overpower"))
+    expect(Find("overpower", L.SIDE)).toBeVisible()
+    expect(anchor:IsEnabled()).toBe(true)
+end
+
+@test("Overpower's nameplate note shows only while its nameplate settings are open")
+local function overpowerNote()
+    Set("overpower", { showIcon = true, iconOnNameplate = true })
+    Open("overpower")
+    local note = Find("overpower", L.OVERPOWER_NAMEPLATE_NOTE)
+    expect(note).toBeVisible()
+    mock.click(Find("overpower", L.ICON_ON_NAMEPLATE))
+    expect(note).never.toBeVisible()
+end
+
+@test("unticking the bar glow hides its settings, and the Countdown heading moves up")
+local function barCollapses()
+    Set("overpower", { barGlow = true })
+    Open("overpower")
+    local countdown = Find("overpower", L.COUNTDOWN)
+    local before = countdown:GetTop()
+    expect(Find("overpower", L.BUTTON_GLOW)).toBeVisible()
+    expect(Find("overpower", L.BAR_HINT)).toBeVisible()
+    mock.click(Find("overpower", L.BAR_GLOW:format(L.OVERPOWER)))
+    expect(ns.Config("overpower").barGlow).toBe(false)
+    expect(Find("overpower", L.BUTTON_GLOW)).never.toBeVisible()
+    expect(Find("overpower", L.BAR_HINT)).never.toBeVisible()
+    expect(countdown:GetTop() > before).toBe(true)
+end
+
+@test("on Execute, which has no countdown, unticking the bar glow moves the slash hint up")
+local function executeSlashHint()
+    Set("execute", { barGlow = true })
+    Open("execute")
+    local slash = Find("execute", L.SLASH_HINT)
+    local before = slash:GetTop()
+    mock.click(Find("execute", L.BAR_GLOW:format(L.EXECUTE)))
+    expect(slash:GetTop() > before).toBe(true)
+end

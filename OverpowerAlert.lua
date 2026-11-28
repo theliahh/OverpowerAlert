@@ -121,7 +121,8 @@ local function Defaults(ability)
         barGlowStyle = "proc",
         showOnCooldown = false,    -- alert even while the ability is on cooldown
         tintNoRage = false,        -- tint the icon blue while short on rage
-        rageThreshold = 0,         -- below this much rage the icon changes look; 0 = off
+        rageEnabled = false,       -- change the icon's look below rageThreshold
+        rageThreshold = 30,        -- 1 to 100 rage
         rageLook = "tint",         -- "tint" (rageColor) or "fade" (see-through)
         rageColor = { r = ns.NO_RAGE_TINT[1], g = ns.NO_RAGE_TINT[2], b = ns.NO_RAGE_TINT[3] },
     }
@@ -436,6 +437,10 @@ local function NormalizeAbility(ability, cfg)
         cfg.nameplateY = side == "BOTTOM" and -gap or (side == "LEFT" or side == "RIGHT") and 0 or gap
     end
     cfg.nameplateGap = nil
+    -- The rage threshold used to be off at 0 and on at anything higher.
+    if type(cfg.rageEnabled) ~= "boolean" then
+        cfg.rageEnabled = (tonumber(cfg.rageThreshold) or 0) > 0
+    end
     local defaults = Defaults(ability)
     for k, v in pairs(defaults) do
         if cfg[k] == nil then cfg[k] = v end
@@ -457,9 +462,10 @@ local function NormalizeAbility(ability, cfg)
     cfg.nameplateY = Clamp(cfg.nameplateY, -500, 500, defaults.nameplateY)
     if type(cfg.customText) ~= "string" then cfg.customText = "" end
     cfg.customText = cfg.customText:sub(1, ns.CUSTOM_TEXT_MAX)
-    -- Rage threshold: whole rage points; a known look; a colour of three
-    -- numbers from 0 to 1.
-    cfg.rageThreshold = math.floor(Clamp(cfg.rageThreshold, 0, 100, defaults.rageThreshold) + 0.5)
+    -- Rage threshold: whole rage points from 1 up (below that, the default);
+    -- a known look; a colour of three numbers from 0 to 1.
+    local threshold = math.floor(Clamp(cfg.rageThreshold, -math.huge, 100, defaults.rageThreshold) + 0.5)
+    cfg.rageThreshold = threshold >= 1 and threshold or defaults.rageThreshold
     if not RAGE_LOOKS[cfg.rageLook] then cfg.rageLook = defaults.rageLook end
     local color = cfg.rageColor
     if type(color) ~= "table" or type(color.r) ~= "number" or type(color.g) ~= "number"
@@ -1530,7 +1536,7 @@ end
 -- to the icon. Nil when the threshold is off or the game can't say.
 function ns.RageLook(abilityKey)
     local cfg = ns.Config(abilityKey)
-    if cfg.rageThreshold <= 0 or not UnitPowerPercent then return nil end
+    if not cfg.rageEnabled or not UnitPowerPercent then return nil end
     local curve = RageCurve(abilityKey, cfg)
     if not curve then return nil end
     local ok, value = pcall(UnitPowerPercent, "player", Enum.PowerType.Rage, false, curve)

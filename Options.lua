@@ -335,8 +335,27 @@ local function BuildAbilityPage(content, ability)
     menus[#menus + 1] = channelDD
 
     ---------------------------------------------------------------------------
+    -- Sections that close up while their feature is off. A section's settings
+    -- live in a group frame that only decides what's visible: it covers the
+    -- page and takes no clicks. Whatever follows a section is re-anchored to
+    -- its last setting or, while it's closed, to its checkbox (Relayout, at
+    -- the end).
+    ---------------------------------------------------------------------------
+    local function Group(parent)
+        local group = CreateFrame("Frame", nil, parent or content)
+        group:SetAllPoints(content)
+        return group
+    end
+
+    local function Below(region, anchor, x, y)
+        region:ClearAllPoints()
+        region:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", x, y)
+    end
+
+    ---------------------------------------------------------------------------
     -- On-screen text and spell icon. Both get the same controls: show
-    -- checkbox, size, unlock/reset/preview.
+    -- checkbox, then (in the section's group) size, unlock/reset/preview.
+    -- Returns the heading, the checkbox, the group and its last control.
     ---------------------------------------------------------------------------
     local function BuildDisplaySection(anchor, s)
         local header = Label(content, s.title, "GameFontNormalLarge")
@@ -345,11 +364,12 @@ local function BuildAbilityPage(content, ability)
         local show = CreateCheckbox(content, s.showLabel, abilityKey, s.showKey, header, -6)
         show:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -4, -6)
 
-        local sizeLabel = Label(content, s.sizeLabel)
+        local group = Group()
+        local sizeLabel = Label(group, s.sizeLabel)
         if s.buildExtra then
             -- Extra controls between the checkbox and the size; returns the
             -- last of them, lined up with the size label.
-            sizeLabel:SetPoint("TOPLEFT", s.buildExtra(show), "BOTTOMLEFT", 0, -12)
+            sizeLabel:SetPoint("TOPLEFT", s.buildExtra(show, group), "BOTTOMLEFT", 0, -12)
         else
             sizeLabel:SetPoint("TOPLEFT", show, "BOTTOMLEFT", 4, -12)
         end
@@ -358,14 +378,14 @@ local function BuildAbilityPage(content, ability)
         local sizeControl, gap
         if s.range then
             local load
-            sizeControl, load = CreateNumberSlider(content, 200, s.range[1], s.range[2],
+            sizeControl, load = CreateNumberSlider(group, 200, s.range[1], s.range[2],
                 function() return cfg()[s.sizeKey] end,
                 function(value) cfg()[s.sizeKey] = value; s.applyStyle() end)
             sizeControl:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", -4, -2)
             sizeLoaders[#sizeLoaders + 1] = load
             gap = 64 -- room for the size box on its right
         else
-            sizeControl = CreateRadioDropdown(content, 160,
+            sizeControl = CreateRadioDropdown(group, 160,
                 function() return s.sizes end,
                 function() return cfg()[s.sizeKey] end,
                 function(value) cfg()[s.sizeKey] = value; s.applyStyle() end)
@@ -374,41 +394,43 @@ local function BuildAbilityPage(content, ability)
             gap = 10
         end
 
-        local unlock = CreateButton(content, s.unlockText, 120)
+        local unlock = CreateButton(group, s.unlockText, 120)
         unlock:SetPoint("LEFT", sizeControl, "RIGHT", gap, 0)
         unlock:SetScript("OnClick", function()
             ns.SetUnlocked(abilityKey, s.kind, not ns.IsUnlocked(abilityKey, s.kind))
         end)
         unlockButtons[abilityKey .. "/" .. s.kind] = { button = unlock, unlockText = s.unlockText, lockText = s.lockText }
 
-        local reset = CreateButton(content, L.RESET_POSITION, 120)
+        local reset = CreateButton(group, L.RESET_POSITION, 120)
         reset:SetPoint("LEFT", unlock, "RIGHT", 6, 0)
         reset:SetScript("OnClick", function() ns.ResetPosition(abilityKey, s.kind) end)
 
-        local preview = CreateButton(content, L.PREVIEW, 80)
+        local preview = CreateButton(group, L.PREVIEW, 80)
         preview:SetPoint("LEFT", reset, "RIGHT", 6, 0)
         preview:SetScript("OnClick", s.preview)
 
-        return sizeControl, show
+        return { header = header, show = show, group = group, last = sizeControl }
     end
 
-    local textSizeDD = BuildDisplaySection(channelDD, {
+    local text = BuildDisplaySection(channelDD, {
         kind = "text", unlockText = L.UNLOCK_TEXT, lockText = L.LOCK_TEXT, title = L.ONSCREEN_TEXT,
         showLabel = L.SHOW_TEXT:format(ns.AlertText(abilityKey)), showKey = "showText",
         sizeLabel = L.TEXT_SIZE, sizeKey = "textSize", sizes = TEXT_SIZES,
         -- The player's own text in place of "OVERPOWER!" etc.
-        buildExtra = function(show)
-            local label = Label(content, L.CUSTOM_TEXT)
+        buildExtra = function(show, group)
+            local label = Label(group, L.CUSTOM_TEXT)
             label:SetPoint("TOPLEFT", show, "BOTTOMLEFT", 4, -8)
-            local box = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+            local box = CreateFrame("EditBox", nil, group, "InputBoxTemplate")
             box:SetSize(240, 22)
             box:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 6, -4)
             box:SetAutoFocus(false)
             box:SetMaxLetters(ns.CUSTOM_TEXT_MAX)
-            local hint = Label(content, L.CUSTOM_TEXT_HINT:format(ability.text), "GameFontDisableSmall")
+            local hint = Label(group, L.CUSTOM_TEXT_HINT:format(ability.text), "GameFontDisableSmall")
             hint:SetPoint("LEFT", box, "RIGHT", 10, 0)
             local function ShowLabel() show.label:SetText(L.SHOW_TEXT:format(ns.AlertText(abilityKey))) end
             box:SetScript("OnShow", function(self) self:SetText(cfg().customText or ""); ShowLabel() end)
+            -- The box is hidden while the text is off; the checkbox isn't.
+            show:HookScript("OnShow", ShowLabel)
             box:SetScript("OnTextChanged", function(self, userInput)
                 if not userInput then return end
                 cfg().customText = self:GetText()
@@ -421,7 +443,7 @@ local function BuildAbilityPage(content, ability)
             end)
             box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
             -- Something lined up with the label, under the box.
-            local below = CreateFrame("Frame", nil, content)
+            local below = CreateFrame("Frame", nil, group)
             below:SetSize(1, 1)
             below:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -6, 0)
             return below
@@ -430,7 +452,7 @@ local function BuildAbilityPage(content, ability)
         preview = function() ns.ShowText(abilityKey) end,
     })
 
-    local iconSizeDD, showIcon = BuildDisplaySection(textSizeDD, {
+    local icon = BuildDisplaySection(text.last, {
         kind = "icon", unlockText = L.UNLOCK_ICON, lockText = L.LOCK_ICON, title = L.SPELL_ICON,
         showLabel = L.SHOW_ICON:format(ability.name, ability.name),
         showKey = "showIcon",
@@ -439,10 +461,10 @@ local function BuildAbilityPage(content, ability)
         preview = function() ns.ShowIcon(abilityKey) end,
     })
 
-    local glowLabel = Label(content, L.ICON_GLOW)
-    glowLabel:SetPoint("TOPLEFT", iconSizeDD, "BOTTOMLEFT", 4, -8)
+    local glowLabel = Label(icon.group, L.ICON_GLOW)
+    glowLabel:SetPoint("TOPLEFT", icon.last, "BOTTOMLEFT", 4, -8)
 
-    local glowDD = CreateRadioDropdown(content, 160,
+    local glowDD = CreateRadioDropdown(icon.group, 160,
         function() return ns.GLOW_STYLES end,
         function() return cfg().iconGlow end,
         function(value)
@@ -453,24 +475,26 @@ local function BuildAbilityPage(content, ability)
     glowDD:SetPoint("TOPLEFT", glowLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = glowDD
 
-    local noRage = CreateCheckbox(content, L.TINT_NO_RAGE:format(ability.name), abilityKey, "tintNoRage", glowDD, -8)
+    local noRage = CreateCheckbox(icon.group, L.TINT_NO_RAGE:format(ability.name), abilityKey, "tintNoRage", glowDD, -8)
     noRage:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", -4, -8)
 
     -- Rage threshold: below it the icon is tinted or faded out. A shown icon
     -- re-reads these settings several times a second, so nothing needs applying.
-    local rageLabel = Label(content, L.RAGE_THRESHOLD)
-    rageLabel:SetPoint("TOPLEFT", noRage, "BOTTOMLEFT", 4, -12)
-    local rageSlider, loadRage = CreateNumberSlider(content, 200, 0, 100,
+    local rageCheck = CreateCheckbox(icon.group, L.RAGE_ENABLE, abilityKey, "rageEnabled", noRage, 0)
+    local rageGroup = Group(icon.group)
+    local rageLabel = Label(rageGroup, L.RAGE_THRESHOLD)
+    rageLabel:SetPoint("TOPLEFT", rageCheck, "BOTTOMLEFT", 4, -8)
+    local rageSlider, loadRage = CreateNumberSlider(rageGroup, 200, 1, 100,
         function() return cfg().rageThreshold end,
         function(value) cfg().rageThreshold = value end)
     rageSlider:SetPoint("TOPLEFT", rageLabel, "BOTTOMLEFT", -4, -2)
     sizeLoaders[#sizeLoaders + 1] = loadRage
 
-    local lookLabel = Label(content, L.RAGE_LOOK)
+    local lookLabel = Label(rageGroup, L.RAGE_LOOK)
     lookLabel:SetPoint("TOPLEFT", rageSlider, "BOTTOMLEFT", 4, -12)
 
-    local swatch = CreateFrame("Button", nil, content, "ColorSwatchTemplate")
-    local swatchLabel = Label(content, L.RAGE_COLOR, "GameFontHighlight")
+    local swatch = CreateFrame("Button", nil, rageGroup, "ColorSwatchTemplate")
+    local swatchLabel = Label(rageGroup, L.RAGE_COLOR, "GameFontHighlight")
     swatchLabel:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
     local function ShowColour()
         local c = cfg().rageColor
@@ -494,7 +518,7 @@ local function BuildAbilityPage(content, ability)
         })
     end)
 
-    local lookDD = CreateRadioDropdown(content, 160,
+    local lookDD = CreateRadioDropdown(rageGroup, 160,
         function()
             return { { value = "tint", label = L.RAGE_LOOK_TINT }, { value = "fade", label = L.RAGE_LOOK_FADE } }
         end,
@@ -508,13 +532,13 @@ local function BuildAbilityPage(content, ability)
     swatch:SetSize(24, 24)
     swatch:SetPoint("LEFT", lookDD, "RIGHT", 12, 0)
 
-    local rageHint = Label(content, L.RAGE_THRESHOLD_HINT, "GameFontDisableSmall")
+    local rageHint = Label(rageGroup, L.RAGE_THRESHOLD_HINT, "GameFontDisableSmall")
     rageHint:SetJustifyH("LEFT")
     rageHint:SetPoint("TOPLEFT", lookDD, "BOTTOMLEFT", 0, -10)
 
+    -- About the Unlock buttons of both sections above; placed by Relayout.
     local moveHint = Label(content, L.MOVE_HINT, "GameFontDisableSmall")
     moveHint:SetJustifyH("LEFT")
-    moveHint:SetPoint("TOPLEFT", rageHint, "BOTTOMLEFT", 0, -16)
 
     ---------------------------------------------------------------------------
     -- Icon on the target's nameplate
@@ -522,6 +546,7 @@ local function BuildAbilityPage(content, ability)
     local plateHeader = Label(content, L.NAMEPLATE, "GameFontNormalLarge")
     plateHeader:SetPoint("TOPLEFT", moveHint, "BOTTOMLEFT", 0, -24)
 
+    local plateGroup = Group()
     local onPlate = CreateCheckbox(content, L.ICON_ON_NAMEPLATE,
         abilityKey, "iconOnNameplate", plateHeader, -6)
     onPlate:SetPoint("TOPLEFT", plateHeader, "BOTTOMLEFT", -4, -6)
@@ -539,48 +564,42 @@ local function BuildAbilityPage(content, ability)
         GameTooltip:Show()
     end)
     onPlate:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    local function RefreshPlate()
-        local on = cfg().showIcon and true or false
-        onPlate:SetEnabled(on)
-        onPlate.label:SetFontObject(on and "GameFontHighlight" or "GameFontDisable")
-    end
-    showIcon:HookScript("OnClick", RefreshPlate)
 
     -- On the nameplate and at its normal position (or in the group) at once.
-    local both = CreateCheckbox(content, L.NAMEPLATE_BOTH, abilityKey, "nameplateBoth", onPlate, 0)
+    local both = CreateCheckbox(plateGroup, L.NAMEPLATE_BOTH, abilityKey, "nameplateBoth", onPlate, 0)
 
-    local sideLabel = Label(content, L.SIDE)
+    local sideLabel = Label(plateGroup, L.SIDE)
     if abilityKey == "overpower" then
         -- Which mob the opening belongs to is worked out from dodge reports.
-        local dodgerNote = Label(content, L.OVERPOWER_NAMEPLATE_NOTE, "GameFontDisableSmall")
+        local dodgerNote = Label(plateGroup, L.OVERPOWER_NAMEPLATE_NOTE, "GameFontDisableSmall")
         dodgerNote:SetJustifyH("LEFT")
         dodgerNote:SetPoint("TOPLEFT", both, "BOTTOMLEFT", 4, -4)
         sideLabel:SetPoint("TOPLEFT", dodgerNote, "BOTTOMLEFT", 0, -10)
     else
         sideLabel:SetPoint("TOPLEFT", both, "BOTTOMLEFT", 4, -10)
     end
-    local sideDD = CreateRadioDropdown(content, 160,
+    local sideDD = CreateRadioDropdown(plateGroup, 160,
         function() return NAMEPLATE_SIDES end,
         function() return cfg().nameplateSide end,
         function(value) cfg().nameplateSide = value end)
     sideDD:SetPoint("TOPLEFT", sideLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = sideDD
 
-    local xLabel = Label(content, L.X_OFFSET)
+    local xLabel = Label(plateGroup, L.X_OFFSET)
     xLabel:SetPoint("LEFT", sideLabel, "LEFT", 180, 0)
-    local xBox = CreateNumberBox(content, abilityKey, "nameplateX")
+    local xBox = CreateNumberBox(plateGroup, abilityKey, "nameplateX")
     xBox:SetPoint("TOPLEFT", xLabel, "BOTTOMLEFT", 6, -8)
 
-    local yLabel = Label(content, L.Y_OFFSET)
+    local yLabel = Label(plateGroup, L.Y_OFFSET)
     yLabel:SetPoint("LEFT", xLabel, "LEFT", 90, 0)
-    local yBox = CreateNumberBox(content, abilityKey, "nameplateY")
+    local yBox = CreateNumberBox(plateGroup, abilityKey, "nameplateY")
     yBox:SetPoint("TOPLEFT", yLabel, "BOTTOMLEFT", 6, -8)
 
-    local plateHint = Label(content, L.OFFSET_HINT, "GameFontDisableSmall")
+    local plateHint = Label(plateGroup, L.OFFSET_HINT, "GameFontDisableSmall")
     plateHint:SetJustifyH("LEFT")
     plateHint:SetPoint("TOPLEFT", sideDD, "BOTTOMLEFT", 0, -10)
 
-    local fallback = CreateCheckbox(content, L.NAMEPLATE_FALLBACK, abilityKey, "nameplateFallback", plateHint, -8)
+    local fallback = CreateCheckbox(plateGroup, L.NAMEPLATE_FALLBACK, abilityKey, "nameplateFallback", plateHint, -8)
     fallback:SetPoint("TOPLEFT", plateHint, "BOTTOMLEFT", -4, -8)
 
     ---------------------------------------------------------------------------
@@ -592,20 +611,21 @@ local function BuildAbilityPage(content, ability)
     local barGlow = CreateCheckbox(content, L.BAR_GLOW:format(ability.name), abilityKey, "barGlow", barHeader, -6)
     barGlow:SetPoint("TOPLEFT", barHeader, "BOTTOMLEFT", -4, -6)
 
-    local barStyleLabel = Label(content, L.BUTTON_GLOW)
+    local barGroup = Group()
+    local barStyleLabel = Label(barGroup, L.BUTTON_GLOW)
     barStyleLabel:SetPoint("TOPLEFT", barGlow, "BOTTOMLEFT", 4, -12)
-    local barStyleDD = CreateRadioDropdown(content, 160,
+    local barStyleDD = CreateRadioDropdown(barGroup, 160,
         function() return ns.GLOW_STYLES end,
         function() return cfg().barGlowStyle end,
         function(value) cfg().barGlowStyle = value end)
     barStyleDD:SetPoint("TOPLEFT", barStyleLabel, "BOTTOMLEFT", 0, -6)
     menus[#menus + 1] = barStyleDD
 
-    local barPreview = CreateButton(content, L.PREVIEW, 80)
+    local barPreview = CreateButton(barGroup, L.PREVIEW, 80)
     barPreview:SetPoint("LEFT", barStyleDD, "RIGHT", 10, 0)
     barPreview:SetScript("OnClick", function() ns.PreviewBarGlow(abilityKey) end)
 
-    local barHint = Label(content, L.BAR_HINT, "GameFontDisableSmall")
+    local barHint = Label(barGroup, L.BAR_HINT, "GameFontDisableSmall")
     barHint:SetJustifyH("LEFT")
     barHint:SetPoint("TOPLEFT", barStyleDD, "BOTTOMLEFT", 0, -10)
 
@@ -613,18 +633,61 @@ local function BuildAbilityPage(content, ability)
     -- Countdown
     ---------------------------------------------------------------------------
     -- Execute has no set length, so nothing to count down.
+    -- What follows the action bar section: the countdown, or the slash hint.
     local slashHint = Label(content, L.SLASH_HINT, "GameFontDisableSmall")
     slashHint:SetJustifyH("LEFT")
-    if ability.untimed then
-        slashHint:SetPoint("TOPLEFT", barHint, "BOTTOMLEFT", 0, -24)
-    else
+    local afterBars = slashHint
+    if not ability.untimed then
         local countdownHeader = Label(content, L.COUNTDOWN, "GameFontNormalLarge")
-        countdownHeader:SetPoint("TOPLEFT", barHint, "BOTTOMLEFT", 0, -24)
+        afterBars = countdownHeader
 
         local countdown = CreateCheckbox(content, L.SHOW_COUNTDOWN, abilityKey, "showCountdown", countdownHeader, -6)
         countdown:SetPoint("TOPLEFT", countdownHeader, "BOTTOMLEFT", -4, -6)
 
         slashHint:SetPoint("TOPLEFT", countdown, "BOTTOMLEFT", 4, -20)
+    end
+
+    ---------------------------------------------------------------------------
+    -- Shows each section's settings while its feature is on, and closes the
+    -- page up under the ones that are off. Labels and dropdowns line up with
+    -- the headings; checkboxes sit 4 pixels to their left.
+    ---------------------------------------------------------------------------
+    local function Relayout()
+        local c = cfg()
+        local textOn, iconOn = c.showText and true or false, c.showIcon and true or false
+
+        text.group:SetShown(textOn)
+        if textOn then Below(icon.header, text.last, 0, -24) else Below(icon.header, text.show, 4, -16) end
+
+        icon.group:SetShown(iconOn)
+        rageGroup:SetShown(c.rageEnabled and true or false)
+        moveHint:SetShown(textOn or iconOn)
+        if not iconOn then
+            Below(moveHint, icon.show, 4, -8)
+        elseif c.rageEnabled then
+            Below(moveHint, rageHint, 0, -16)
+        else
+            Below(moveHint, rageCheck, 4, -8)
+        end
+        if textOn or iconOn then Below(plateHeader, moveHint, 0, -24) else Below(plateHeader, icon.show, 4, -16) end
+
+        -- Only a shown icon can go on a nameplate.
+        onPlate:SetEnabled(iconOn)
+        onPlate.label:SetFontObject(iconOn and "GameFontHighlight" or "GameFontDisable")
+        local plateOn = iconOn and c.iconOnNameplate and true or false
+        plateGroup:SetShown(plateOn)
+        if plateOn then Below(barHeader, fallback, 4, -24) else Below(barHeader, onPlate, 4, -16) end
+
+        local barOn = c.barGlow and true or false
+        barGroup:SetShown(barOn)
+        if barOn then Below(afterBars, barHint, 0, -24) else Below(afterBars, barGlow, 4, -16) end
+
+        -- The page ends just below its last line, so the scroll bar fits.
+        local top, bottom = content:GetTop(), slashHint:GetBottom()
+        if top and bottom then content:SetHeight(top - bottom + 16) end
+    end
+    for _, check in ipairs({ text.show, icon.show, rageCheck, onPlate, barGlow }) do
+        check:HookScript("OnClick", Relayout)
     end
 
     return function()
@@ -634,7 +697,7 @@ local function BuildAbilityPage(content, ability)
         for _, dd in ipairs(menus) do dd:GenerateMenu() end
         RefreshSoundText()
         ShowColour()
-        RefreshPlate()
+        Relayout()
     end
 end
 

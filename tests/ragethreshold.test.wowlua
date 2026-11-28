@@ -41,11 +41,12 @@ end
 -- Settings
 --------------------------------------------------------------------------------
 
-@test("every ability starts with the threshold off, tint, and the short-on-rage blue")
+@test("every ability starts with the threshold off at 30, tint, and the short-on-rage blue")
 local function defaults()
     for _, ability in ipairs(ns.ABILITIES) do
         local cfg = ns.Config(ability.key)
-        expect(cfg.rageThreshold).toBe(0)
+        expect(cfg.rageEnabled).toBe(false)
+        expect(cfg.rageThreshold).toBe(30)
         expect(cfg.rageLook).toBe("tint")
         expect(cfg.rageColor.r).toBe(ns.NO_RAGE_TINT[1])
         expect(cfg.rageColor.g).toBe(ns.NO_RAGE_TINT[2])
@@ -61,11 +62,38 @@ local function separateColours()
     expect(ns.Config("overpower").rageColor.r).toBe(ns.NO_RAGE_TINT[1])
 end
 
-@test("thresholds are whole numbers from 0 to 100")
+@test("thresholds are whole numbers from 1 to 100; anything below 1 becomes 30")
 local function thresholdRange()
     expect(importAbility("overpower", { rageThreshold = 150 }).rageThreshold).toBe(100)
-    expect(importAbility("overpower", { rageThreshold = -5 }).rageThreshold).toBe(0)
+    expect(importAbility("overpower", { rageThreshold = -5 }).rageThreshold).toBe(30)
     expect(importAbility("overpower", { rageThreshold = 12.6 }).rageThreshold).toBe(13)
+end
+
+@test("a threshold from before the checkbox: above 0 comes in on, keeping its number")
+local function oldThresholdOn()
+    local cfg = importAbility("overpower", { rageThreshold = 40 })
+    expect(cfg.rageEnabled).toBe(true)
+    expect(cfg.rageThreshold).toBe(40)
+end
+
+@test("a threshold from before the checkbox: 0 comes in off, at 30 for when it's turned on")
+local function oldThresholdOff()
+    local cfg = importAbility("overpower", { rageThreshold = 0 })
+    expect(cfg.rageEnabled).toBe(false)
+    expect(cfg.rageThreshold).toBe(30)
+end
+
+@test("turned on with a threshold of 0: stays on, at 30")
+local function onAtZero()
+    local cfg = importAbility("revenge", { rageEnabled = true, rageThreshold = 0 })
+    expect(cfg.rageEnabled).toBe(true)
+    expect(cfg.rageThreshold).toBe(30)
+end
+
+@test("an on/off that isn't true or false is worked out from the threshold")
+local function badEnabled()
+    expect(importAbility("execute", { rageEnabled = "yes", rageThreshold = 25 }).rageEnabled).toBe(true)
+    expect(importAbility("execute", { rageEnabled = "yes", rageThreshold = 0 }).rageEnabled).toBe(false)
 end
 
 @test("an unknown look becomes tint")
@@ -86,15 +114,17 @@ local function badColour()
     expect(cfg.rageColor.b).toBe(0)
 end
 
-@test("export and import keep the threshold, look and colour")
+@test("export and import keep the on/off, threshold, look and colour")
 local function roundTrip()
     local op = ns.Config("overpower")
-    op.rageThreshold = 30
+    op.rageEnabled = true
+    op.rageThreshold = 45
     op.rageLook = "fade"
     op.rageColor = { r = 1, g = 0, b = 0 }
     ns.ImportProfile(ns.ExportProfile(), "Shared")
     local got = ns.Config("overpower")
-    expect(got.rageThreshold).toBe(30)
+    expect(got.rageEnabled).toBe(true)
+    expect(got.rageThreshold).toBe(45)
     expect(got.rageLook).toBe("fade")
     expect(got.rageColor.r).toBe(1)
     expect(got.rageColor.g).toBe(0)
@@ -115,8 +145,9 @@ local function withRage(rage)
     return seen
 end
 
-@test("threshold off: no look, and the game isn't asked")
+@test("threshold off: no look, and the game isn't asked, whatever the number")
 local function curveOff()
+    ns.Config("overpower").rageThreshold = 50
     local seen = withRage(10)
     expect(ns.RageLook("overpower")).toBe(nil)
     expect(seen.unit).toBe(nil)
@@ -125,6 +156,7 @@ end
 @test("tint: the chosen colour below the threshold, white from it up")
 local function curveTint()
     local cfg = ns.Config("execute")
+    cfg.rageEnabled = true
     cfg.rageThreshold = 30
     cfg.rageColor = { r = 1, g = 0.25, b = 0 }
     local seen = withRage(29)
@@ -145,6 +177,7 @@ end
 @test("fade: see-through below the threshold, shown from it up")
 local function curveFade()
     local cfg = ns.Config("overpower")
+    cfg.rageEnabled = true
     cfg.rageThreshold = 15
     cfg.rageLook = "fade"
     withRage(14)
@@ -160,6 +193,7 @@ end
 @test("a changed threshold, look or colour takes effect at once")
 local function curveRebuilt()
     local cfg = ns.Config("overpower")
+    cfg.rageEnabled = true
     cfg.rageThreshold = 50
     cfg.rageLook = "fade"
     withRage(40)
@@ -174,6 +208,7 @@ end
 
 @test("without the game's function, or when it fails: no look and no error")
 local function curveMissing()
+    ns.Config("revenge").rageEnabled = true
     ns.Config("revenge").rageThreshold = 30
     mock.fake("UnitPowerPercent", nil)
     expect(ns.RageLook("revenge")).toBe(nil)

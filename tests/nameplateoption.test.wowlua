@@ -1,0 +1,92 @@
+-- The "Anchor icon to target's nameplate" option is greyed out while the
+-- ability's spell icon is off, since only a shown icon can go on a nameplate.
+import test, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+local L = ns.L
+
+-- The checkbox labelled `text` on the same options page as `near`.
+local function CheckboxOnPage(page, text)
+    for _, child in ipairs({ page:GetChildren() }) do
+        if child.label and child.label:GetText() == text then return child end
+    end
+end
+
+-- Overpower's page: the frame holding its "Show the Overpower icon" checkbox.
+local function Page()
+    local text = L.SHOW_ICON:format(L.OVERPOWER, L.OVERPOWER)
+    local f = EnumerateFrames()
+    while f do
+        if f.label and f.label.GetText and f.label:GetText() == text then return f:GetParent(), f end
+        f = EnumerateFrames(f)
+    end
+end
+
+local function Controls()
+    local page, show = Page()
+    expect(page ~= nil).toBe(true)
+    return show, CheckboxOnPage(page, L.ICON_ON_NAMEPLATE)
+end
+
+-- Opens the options on Overpower's tab and reloads it from the settings, as
+-- a profile switch does.
+local function OpenPage()
+    ns.OpenOptions()
+    local panel = Page():GetParent():GetParent() -- page > scroll frame > panel
+    for _, child in ipairs({ panel:GetChildren() }) do
+        if child.GetText and child:GetText() == L.OVERPOWER and child:IsEnabled() then
+            mock.click(child) -- the selected tab is disabled: it's already showing
+        end
+    end
+    ns.RefreshOptions()
+end
+
+@test("the nameplate option is usable while the icon is shown")
+local function enabledWithIcon()
+    ns.Config("overpower").showIcon = true
+    OpenPage()
+    local _, onPlate = Controls()
+    expect(onPlate:IsEnabled()).toBe(true)
+end
+
+@test("turning the icon off greys the nameplate option out, and on again brings it back")
+local function followsIcon()
+    ns.Config("overpower").showIcon = true
+    OpenPage()
+    local show, onPlate = Controls()
+    mock.click(show)
+    expect(ns.Config("overpower").showIcon).toBe(false)
+    expect(onPlate:IsEnabled()).toBe(false)
+    mock.click(show)
+    expect(ns.Config("overpower").showIcon).toBe(true)
+    expect(onPlate:IsEnabled()).toBe(true)
+end
+
+@test("the page greys it out when it opens with the icon off, and clicking it changes nothing")
+local function greyOnOpen()
+    ns.Config("overpower").showIcon = false
+    local before = ns.Config("overpower").iconOnNameplate
+    OpenPage()
+    local _, onPlate = Controls()
+    expect(onPlate:IsEnabled()).toBe(false)
+    mock.click(onPlate)
+    expect(ns.Config("overpower").iconOnNameplate).toBe(before)
+end
+
+@test("hovering it says the spell icon has to be on")
+local function tooltip()
+    ns.Config("overpower").showIcon = false
+    OpenPage()
+    local _, onPlate = Controls()
+    mock.hover(onPlate)
+    expect(GameTooltip:IsShown()).toBe(true)
+    local found = false
+    for i = 1, GameTooltip:NumLines() do
+        local line = _G["GameTooltipTextLeft" .. i]
+        if line and line:GetText() == L.NAMEPLATE_NEEDS_ICON:format(L.OVERPOWER) then found = true end
+    end
+    expect(found).toBe(true)
+end

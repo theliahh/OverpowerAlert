@@ -389,7 +389,7 @@ local function BuildAbilityPage(content, ability)
         preview:SetPoint("LEFT", reset, "RIGHT", 6, 0)
         preview:SetScript("OnClick", s.preview)
 
-        return sizeControl
+        return sizeControl, show
     end
 
     local textSizeDD = BuildDisplaySection(channelDD, {
@@ -430,7 +430,7 @@ local function BuildAbilityPage(content, ability)
         preview = function() ns.ShowText(abilityKey) end,
     })
 
-    local iconSizeDD = BuildDisplaySection(textSizeDD, {
+    local iconSizeDD, showIcon = BuildDisplaySection(textSizeDD, {
         kind = "icon", unlockText = L.UNLOCK_ICON, lockText = L.LOCK_ICON, title = L.SPELL_ICON,
         showLabel = L.SHOW_ICON:format(ability.name, ability.name),
         showKey = "showIcon",
@@ -526,6 +526,26 @@ local function BuildAbilityPage(content, ability)
         abilityKey, "iconOnNameplate", plateHeader, -6)
     onPlate:SetPoint("TOPLEFT", plateHeader, "BOTTOMLEFT", -4, -6)
 
+    -- Only a shown icon can go on a nameplate, so this is greyed out while the
+    -- spell icon is off. Hovering it (the box or its text) says why.
+    onPlate:SetHitRectInsets(0, -(onPlate.label:GetStringWidth() + 4), 0, 0)
+    onPlate:SetMotionScriptsWhileDisabled(true)
+    onPlate:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L.ICON_ON_NAMEPLATE, 1, 1, 1)
+        local r, g, b = 1, 0.82, 0
+        if not cfg().showIcon then r, g, b = 1, 0.25, 0.25 end
+        GameTooltip:AddLine(L.NAMEPLATE_NEEDS_ICON:format(ability.name), r, g, b, true)
+        GameTooltip:Show()
+    end)
+    onPlate:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    local function RefreshPlate()
+        local on = cfg().showIcon and true or false
+        onPlate:SetEnabled(on)
+        onPlate.label:SetFontObject(on and "GameFontHighlight" or "GameFontDisable")
+    end
+    showIcon:HookScript("OnClick", RefreshPlate)
+
     -- On the nameplate and at its normal position (or in the group) at once.
     local both = CreateCheckbox(content, L.NAMEPLATE_BOTH, abilityKey, "nameplateBoth", onPlate, 0)
 
@@ -614,6 +634,7 @@ local function BuildAbilityPage(content, ability)
         for _, dd in ipairs(menus) do dd:GenerateMenu() end
         RefreshSoundText()
         ShowColour()
+        RefreshPlate()
     end
 end
 

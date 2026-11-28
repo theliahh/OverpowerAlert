@@ -456,9 +456,65 @@ local function BuildAbilityPage(content, ability)
     local noRage = CreateCheckbox(content, L.TINT_NO_RAGE:format(ability.name), abilityKey, "tintNoRage", glowDD, -8)
     noRage:SetPoint("TOPLEFT", glowDD, "BOTTOMLEFT", -4, -8)
 
+    -- Rage threshold: below it the icon is tinted or faded out. A shown icon
+    -- re-reads these settings several times a second, so nothing needs applying.
+    local rageLabel = Label(content, L.RAGE_THRESHOLD)
+    rageLabel:SetPoint("TOPLEFT", noRage, "BOTTOMLEFT", 4, -12)
+    local rageSlider, loadRage = CreateNumberSlider(content, 200, 0, 100,
+        function() return cfg().rageThreshold end,
+        function(value) cfg().rageThreshold = value end)
+    rageSlider:SetPoint("TOPLEFT", rageLabel, "BOTTOMLEFT", -4, -2)
+    sizeLoaders[#sizeLoaders + 1] = loadRage
+
+    local lookLabel = Label(content, L.RAGE_LOOK)
+    lookLabel:SetPoint("TOPLEFT", rageSlider, "BOTTOMLEFT", 4, -12)
+
+    local swatch = CreateFrame("Button", nil, content, "ColorSwatchTemplate")
+    local swatchLabel = Label(content, L.RAGE_COLOR, "GameFontHighlight")
+    swatchLabel:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
+    local function ShowColour()
+        local c = cfg().rageColor
+        swatch:SetColorRGB(c.r, c.g, c.b)
+        local tint = cfg().rageLook == "tint"
+        swatch:SetShown(tint)
+        swatchLabel:SetShown(tint)
+    end
+    local function SetColour(r, g, b)
+        -- A new table each time, never the saved one changed in place.
+        cfg().rageColor = { r = r, g = g, b = b }
+        swatch:SetColorRGB(r, g, b)
+    end
+    swatch:SetScript("OnShow", ShowColour)
+    swatch:SetScript("OnClick", function()
+        local old = cfg().rageColor
+        ColorPickerFrame:SetupColorPickerAndShow({
+            r = old.r, g = old.g, b = old.b, hasOpacity = false,
+            swatchFunc = function() SetColour(ColorPickerFrame:GetColorRGB()) end,
+            cancelFunc = function() SetColour(old.r, old.g, old.b) end,
+        })
+    end)
+
+    local lookDD = CreateRadioDropdown(content, 160,
+        function()
+            return { { value = "tint", label = L.RAGE_LOOK_TINT }, { value = "fade", label = L.RAGE_LOOK_FADE } }
+        end,
+        function() return cfg().rageLook end,
+        function(value)
+            cfg().rageLook = value
+            ShowColour()
+        end)
+    lookDD:SetPoint("TOPLEFT", lookLabel, "BOTTOMLEFT", 0, -6)
+    menus[#menus + 1] = lookDD
+    swatch:SetSize(24, 24)
+    swatch:SetPoint("LEFT", lookDD, "RIGHT", 12, 0)
+
+    local rageHint = Label(content, L.RAGE_THRESHOLD_HINT, "GameFontDisableSmall")
+    rageHint:SetJustifyH("LEFT")
+    rageHint:SetPoint("TOPLEFT", lookDD, "BOTTOMLEFT", 0, -10)
+
     local moveHint = Label(content, L.MOVE_HINT, "GameFontDisableSmall")
     moveHint:SetJustifyH("LEFT")
-    moveHint:SetPoint("TOPLEFT", noRage, "BOTTOMLEFT", 4, -12)
+    moveHint:SetPoint("TOPLEFT", rageHint, "BOTTOMLEFT", 0, -16)
 
     ---------------------------------------------------------------------------
     -- Icon on the target's nameplate
@@ -557,6 +613,7 @@ local function BuildAbilityPage(content, ability)
         for _, load in ipairs(sizeLoaders) do load() end
         for _, dd in ipairs(menus) do dd:GenerateMenu() end
         RefreshSoundText()
+        ShowColour()
     end
 end
 
@@ -1075,7 +1132,7 @@ function ns.CreateOptions()
 
     refreshers[GENERAL] = BuildGeneralPage(AddTab(GENERAL, L.GENERAL, 820))
     for _, ability in ipairs(ns.ABILITIES) do
-        refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1570), ability)
+        refreshers[ability.key] = BuildAbilityPage(AddTab(ability.key, ability.name, 1680), ability)
     end
 
     panel:SetScript("OnShow", function() SelectTab(selected) end)

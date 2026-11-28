@@ -233,7 +233,7 @@ local function SetGlow(el, on)
     if on then StartGlow(el.body, style) else StopGlow(el.body) end
     local copy = el.plateCopy
     if copy then
-        if on and copy:IsShown() then StartGlow(copy, style) else StopGlow(copy) end
+        if on and copy:IsShown() then StartGlow(copy.rageLayer, style) else StopGlow(copy.rageLayer) end
     end
 end
 
@@ -476,9 +476,9 @@ local function PlaceIcon(el)
         copy:ClearAllPoints()
         copy:SetPoint(OPPOSITE[side], plate, side, x, y)
         copy:Show()
-        if el.glowing then StartGlow(copy, cfg.iconGlow) end
+        if el.glowing then StartGlow(copy.rageLayer, cfg.iconGlow) end
     else
-        StopGlow(copy)
+        StopGlow(copy.rageLayer)
         copy:Hide()
     end
 
@@ -533,15 +533,50 @@ end
 
 -- With "tintNoRage", the icon turns blue while the player is short on rage
 -- for it, as action buttons do.
-local NO_RAGE_TINT = { 0.5, 0.5, 1 }
+local NO_RAGE_TINT = ns.NO_RAGE_TINT
+
+-- Colours the spell texture, on the nameplate copy too. The values may be
+-- secret (the rage threshold's tint): passed on, never read.
+local function PaintIcon(el, r, g, b, a)
+    el.texture:SetVertexColor(r, g, b, a)
+    el.plateCopy.texture:SetVertexColor(r, g, b, a)
+end
 
 local function SetShortOnRage(el, short)
+    if el.rageTint then return end -- the rage threshold's colour owns the icon
     if el.shortOnRage == short then return end
     el.shortOnRage = short
-    local r, g, b = 1, 1, 1
-    if short then r, g, b = unpack(NO_RAGE_TINT) end
-    el.texture:SetVertexColor(r, g, b)
-    if el.plateCopy then el.plateCopy.texture:SetVertexColor(r, g, b) end
+    if short then PaintIcon(el, unpack(NO_RAGE_TINT)) else PaintIcon(el, 1, 1, 1) end
+end
+
+-- The rage threshold (ns.RageLook): below it the icon is tinted or faded,
+-- from the game's own curve over the player's secret rage. The values are
+-- set, never read. The fade goes on the icon's rage layer, so it combines
+-- with the Execute watch alpha on `body`. Previews and moving the icon show
+-- it normally.
+local RAGE_CHECK = 0.05
+
+-- `clear` puts the normal look back whatever the rage (the icon is going).
+local function ApplyRageLook(el, clear)
+    local mode, value
+    if not clear and not el.unlocked and not el.isPreview and ns.RageLook then
+        mode, value = ns.RageLook(el.abilityKey)
+    end
+    local alpha = 1
+    if mode == "fade" then alpha = value end
+    local copyLayer = el.plateCopy.rageLayer
+    pcall(el.rageLayer.SetAlpha, el.rageLayer, alpha)
+    pcall(copyLayer.SetAlpha, copyLayer, alpha)
+    -- A colour the game won't take counts as no threshold, so the blue tint
+    -- still works.
+    if mode == "tint" and pcall(function() PaintIcon(el, value:GetRGBA()) end) then
+        el.rageTint = true
+    elseif el.rageTint then
+        -- Back to white; the short-on-rage blue comes back on its next check.
+        el.rageTint = false
+        el.shortOnRage = false
+        PaintIcon(el, 1, 1, 1)
+    end
 end
 
 local function UpdateCooldownLook(el)
@@ -654,15 +689,25 @@ function ns.InitDisplay()
         local f = iconEl.frame
         -- Everything visible goes on `body`, so the icon can be hidden (no
         -- nameplate, no fallback) while the frame keeps running its timing.
-        local body = CreateFrame("Frame", nil, f)
+        -- `body` sits on its own layer for the rage threshold's fade: each
+        -- frame's alpha multiplies into its children, so the two hidden
+        -- alphas (rage, and the Execute watch on `body`) combine without the
+        -- addon reading either.
+        local rageLayer = CreateFrame("Frame", nil, f)
+        rageLayer:SetAllPoints()
+        iconEl.rageLayer = rageLayer
+        local body = CreateFrame("Frame", nil, rageLayer)
         body:SetAllPoints()
         iconEl.body = body
         iconEl.texture, iconEl.swipe, iconEl.countdown = BuildIconParts(body)
-        -- The second copy for the nameplate ("nameplateBoth").
+        -- The second copy for the nameplate ("nameplateBoth"). Its parts and
+        -- glow are on its own rage layer, under the copy's watch alpha.
         local copy = CreateFrame("Frame", nil, f)
         copy:SetSize(64, 64)
         copy:Hide()
-        copy.texture, copy.swipe, copy.countdown = BuildIconParts(copy)
+        copy.rageLayer = CreateFrame("Frame", nil, copy)
+        copy.rageLayer:SetAllPoints()
+        copy.texture, copy.swipe, copy.countdown = BuildIconParts(copy.rageLayer)
         iconEl.plateCopy = copy
         iconEl.onShow = function()
             RefreshIconTexture(iconEl, ability)
@@ -671,12 +716,18 @@ function ns.InitDisplay()
             iconEl.coolingDown, iconEl.nextCooldownCheck = nil, 0
             SetShortOnRage(iconEl, false)
             UpdateCooldownLook(iconEl)
+            iconEl.nextRageCheck = 0
+            ApplyRageLook(iconEl)
         end
         iconEl.onUpdate = function()
             PlaceIcon(iconEl)
             UpdateCooldownLook(iconEl)
+            local now = GetTime()
+            if now >= (iconEl.nextRageCheck or 0) then
+                iconEl.nextRageCheck = now + RAGE_CHECK
+                ApplyRageLook(iconEl)
+            end
             if iconEl.watching then
-                local now = GetTime()
                 if now >= (iconEl.nextWatchCheck or 0) then
                     iconEl.nextWatchCheck = now + WATCH_CHECK
                     ApplyWatchAlpha(iconEl)
@@ -687,6 +738,7 @@ function ns.InitDisplay()
             if iconEl.watching then SetWatching(iconEl, false) end
             SetGlow(iconEl, false)
             SetCoolingDown(iconEl, false)
+            ApplyRageLook(iconEl, true)
             SetShortOnRage(iconEl, false)
             ns.LayoutGroup() -- the others close up
         end)

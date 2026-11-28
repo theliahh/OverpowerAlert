@@ -32,7 +32,8 @@ end
 
 -- The spell texture: the ARTWORK texture on the icon's inner frame.
 local function texture()
-    local body = _G["OverpowerAlertRevengeIconFrame"]:GetChildren()
+    local rageLayer = _G["OverpowerAlertRevengeIconFrame"]:GetChildren()
+    local body = rageLayer:GetChildren()
     for _, region in ipairs({ body:GetRegions() }) do
         if region:GetObjectType() == "Texture" and region:GetDrawLayer() == "ARTWORK" then return region end
     end

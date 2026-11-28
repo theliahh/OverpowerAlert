@@ -205,6 +205,13 @@ L.UNLOCK_ICON = "Unlock Icon"
 L.LOCK_ICON = "Lock Icon"
 L.ICON_GLOW = "Icon glow"
 L.TINT_NO_RAGE = "Tint the icon blue while you don't have enough rage for %s" -- %s: ability name
+L.RAGE_THRESHOLD = "Rage threshold (0 = off)"
+L.RAGE_LOOK = "Below the threshold"
+L.RAGE_LOOK_TINT = "Tint the icon"
+L.RAGE_LOOK_FADE = "Fade the icon out"
+L.RAGE_COLOR = "Tint colour"
+L.RAGE_THRESHOLD_HINT = "While the icon is up, it changes look whenever your rage is below this, in any stance.\n" ..
+    "Only the icon: the game hides your rage from addons, so sounds and text can't follow it."
 
 L.RESET_POSITION = "Reset Position"
 L.PREVIEW = "Preview"

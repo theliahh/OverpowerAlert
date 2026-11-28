@@ -86,6 +86,13 @@ ns.STANCES = {
     { key = "berserker", name = L.BERSERKER_STANCE, spellID = 2458 },
 }
 
+-- The blue an icon turns while short on rage, as action buttons do. Also the
+-- default colour for the rage threshold's tint. Read, never handed out:
+-- each ability gets its own copy.
+ns.NO_RAGE_TINT = { 0.5, 0.5, 1 }
+
+local RAGE_LOOKS = { tint = true, fade = true }
+
 local function Defaults(ability)
     local stances = {}
     for k, v in pairs(ability.defaults.stances) do stances[k] = v end
@@ -114,6 +121,9 @@ local function Defaults(ability)
         barGlowStyle = "proc",
         showOnCooldown = false,    -- alert even while the ability is on cooldown
         tintNoRage = false,        -- tint the icon blue while short on rage
+        rageThreshold = 0,         -- below this much rage the icon changes look; 0 = off
+        rageLook = "tint",         -- "tint" (rageColor) or "fade" (see-through)
+        rageColor = { r = ns.NO_RAGE_TINT[1], g = ns.NO_RAGE_TINT[2], b = ns.NO_RAGE_TINT[3] },
     }
 end
 
@@ -447,6 +457,20 @@ local function NormalizeAbility(ability, cfg)
     cfg.nameplateY = Clamp(cfg.nameplateY, -500, 500, defaults.nameplateY)
     if type(cfg.customText) ~= "string" then cfg.customText = "" end
     cfg.customText = cfg.customText:sub(1, ns.CUSTOM_TEXT_MAX)
+    -- Rage threshold: whole rage points; a known look; a colour of three
+    -- numbers from 0 to 1.
+    cfg.rageThreshold = math.floor(Clamp(cfg.rageThreshold, 0, 100, defaults.rageThreshold) + 0.5)
+    if not RAGE_LOOKS[cfg.rageLook] then cfg.rageLook = defaults.rageLook end
+    local color = cfg.rageColor
+    if type(color) ~= "table" or type(color.r) ~= "number" or type(color.g) ~= "number"
+        or type(color.b) ~= "number" then
+        color = defaults.rageColor
+    end
+    cfg.rageColor = {
+        r = Clamp(color.r, 0, 1, defaults.rageColor.r),
+        g = Clamp(color.g, 0, 1, defaults.rageColor.g),
+        b = Clamp(color.b, 0, 1, defaults.rageColor.b),
+    }
     return cfg
 end
 
@@ -1430,17 +1454,22 @@ end
 -- no sound or text, since nothing tells the addon when it happens.
 local executeCurve
 
+-- A step curve made by `create` (C_CurveUtil.CreateCurve or CreateColorCurve):
+-- `below` under `at`, `above` from `at` up. Nil if the game can't make one.
+local function StepCurve(create, at, below, above)
+    if not (create and Enum.LuaCurveType) then return nil end
+    local ok, curve = pcall(create)
+    if ok and curve and pcall(curve.SetType, curve, Enum.LuaCurveType.Step)
+        and pcall(curve.AddPoint, curve, 0, below)
+        and pcall(curve.AddPoint, curve, at, above) then
+        return curve
+    end
+end
+
 function ns.ExecuteCurve()
     if executeCurve == nil then
-        executeCurve = false
-        if C_CurveUtil and C_CurveUtil.CreateCurve and Enum.LuaCurveType then
-            local ok, curve = pcall(C_CurveUtil.CreateCurve)
-            if ok and curve and pcall(curve.SetType, curve, Enum.LuaCurveType.Step)
-                and pcall(curve.AddPoint, curve, 0, 1)        -- below 20%: shown
-                and pcall(curve.AddPoint, curve, 0.2, 0) then -- 20% and up: hidden
-                executeCurve = curve
-            end
-        end
+        -- Below 20%: shown; 20% and up: hidden.
+        executeCurve = C_CurveUtil and StepCurve(C_CurveUtil.CreateCurve, 0.2, 1, 0) or false
     end
     return executeCurve or nil
 end
@@ -1465,6 +1494,48 @@ function ns.ExecuteAlpha()
     if not (curve and UnitHealthPercent) then return nil end
     local ok, alpha = pcall(UnitHealthPercent, "target", false, curve)
     if ok then return alpha end
+end
+
+-- The rage threshold. Rage is a secret value on this client too, but like the
+-- target's health it can drive what's drawn: the game puts the player's rage
+-- through a step curve and the result goes straight to the icon, unread. A
+-- warrior's rage tops out at 100, so its percent is the rage itself.
+local rageCurves = {} -- [abilityKey] = the curve and the settings it was made for
+
+local function BuildRageCurve(cfg)
+    if not C_CurveUtil then return nil end
+    local at = cfg.rageThreshold / 100
+    if cfg.rageLook ~= "tint" then return StepCurve(C_CurveUtil.CreateCurve, at, 0, 1) end
+    if not CreateColor then return nil end
+    local c = cfg.rageColor
+    return StepCurve(C_CurveUtil.CreateColorCurve, at, CreateColor(c.r, c.g, c.b, 1), CreateColor(1, 1, 1, 1))
+end
+
+local function RageCurve(abilityKey, cfg)
+    local c, color = rageCurves[abilityKey], cfg.rageColor
+    if not (c and c.threshold == cfg.rageThreshold and c.look == cfg.rageLook
+        and c.r == color.r and c.g == color.g and c.b == color.b) then
+        c = {
+            threshold = cfg.rageThreshold, look = cfg.rageLook, r = color.r, g = color.g, b = color.b,
+            curve = BuildRageCurve(cfg) or false,
+        }
+        rageCurves[abilityKey] = c
+    end
+    return c.curve or nil
+end
+
+-- How the ability's icon should look for the player's rage: "tint" and a
+-- colour (white from the threshold up), or "fade" and an alpha (1 from the
+-- threshold up). Both values are secret on this client, for handing straight
+-- to the icon. Nil when the threshold is off or the game can't say.
+function ns.RageLook(abilityKey)
+    local cfg = ns.Config(abilityKey)
+    if cfg.rageThreshold <= 0 or not UnitPowerPercent then return nil end
+    local curve = RageCurve(abilityKey, cfg)
+    if not curve then return nil end
+    local ok, value = pcall(UnitPowerPercent, "player", Enum.PowerType.Rage, false, curve)
+    if not ok or value == nil then return nil end
+    return cfg.rageLook, value
 end
 
 -- A new target starts over: its health has nothing to do with the last one's.

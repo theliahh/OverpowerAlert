@@ -129,7 +129,9 @@ end
 -- In Defensive Stance, ticked: the icon follows the target's health. The
 -- real alpha is secret, so these stand in for it.
 local function body()
-    return (icon():GetChildren()) -- the icon's look; its alpha is the one set
+    -- The icon's look, under its rage layer; its alpha is the one set.
+    local rageLayer = icon():GetChildren()
+    return (rageLayer:GetChildren())
 end
 
 local function defensive(alpha)
@@ -154,6 +156,25 @@ local function watchDefensive()
     expect(icon()).toBeShown()
     expect(alerts()).toBe(0) -- no sound or text
     expect(_G["OverpowerAlertExecuteTextFrame"]).never.toBeShown()
+    ns.Config("execute").stances.defensive = false
+end
+
+@test("Defensive Stance with a rage threshold fade: health and rage each set their own alpha")
+local function watchWithRage()
+    local rage = { value = 0 }
+    mock.stub(ns, "RageLook", function(abilityKey)
+        if abilityKey == "execute" then return "fade", rage.value end
+    end)
+    local alpha = { value = 1 } -- the target is below 20%
+    defensive(alpha)
+    local rageLayer = icon():GetChildren()
+    expect(icon()).toBeShown()
+    expect(body():GetAlpha()).toBe(1)
+    expect(rageLayer:GetAlpha()).toBe(0) -- not enough rage: still hidden
+    rage.value, alpha.value = 1, 0 -- enough rage, but the target healed
+    mock.waitSeconds(0.2)
+    expect(body():GetAlpha()).toBe(0)
+    expect(rageLayer:GetAlpha()).toBe(1)
     ns.Config("execute").stances.defensive = false
 end
 

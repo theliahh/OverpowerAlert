@@ -1,0 +1,361 @@
+-- The rage threshold: below it, the icon is tinted a chosen colour or faded
+-- out. The game hides rage from addons, so the look comes from the game's
+-- own curve over the hidden value, handed to the icon unread.
+import test, afterEach, expect, config from "wowlua:test"
+import * as mock from "wowlua:mock"
+
+config({ profile = "warrior" })
+
+local _, ns = ...
+
+local E = C_EncodingUtil
+
+-- An export string made by hand around `payload`, as an edited string would be.
+local function encode(payload)
+    local cbor = E.SerializeCBOR(payload)
+    return "!OPA1!" .. E.EncodeBase64(E.CompressString(cbor, Enum.CompressionMethod.Deflate))
+end
+
+local function importAbility(abilityKey, cfg)
+    local name = ns.ImportProfile(encode({ v = 1, name = "Edited", data = { [abilityKey] = cfg } }))
+    return ns.Config(abilityKey), name
+end
+
+local REVENGE = 25288
+local usable, noPower = true, false
+local look = {} -- what the stubbed ns.RageLook answers: .mode and .value
+
+@afterEach
+local function reset()
+    mock.waitSeconds(6) -- any icon still up fades and hides
+    mock.player:leaveCombat()
+    look.mode, look.value = nil, nil
+    ns.SetProfile("Default")
+    for _, name in ipairs(ns.ProfileNames()) do
+        if name ~= "Default" then ns.DeleteProfile(name) end
+    end
+    ns.ResetProfile()
+end
+
+--------------------------------------------------------------------------------
+-- Settings
+--------------------------------------------------------------------------------
+
+@test("every ability starts with the threshold off, tint, and the short-on-rage blue")
+local function defaults()
+    for _, ability in ipairs(ns.ABILITIES) do
+        local cfg = ns.Config(ability.key)
+        expect(cfg.rageThreshold).toBe(0)
+        expect(cfg.rageLook).toBe("tint")
+        expect(cfg.rageColor.r).toBe(ns.NO_RAGE_TINT[1])
+        expect(cfg.rageColor.g).toBe(ns.NO_RAGE_TINT[2])
+        expect(cfg.rageColor.b).toBe(ns.NO_RAGE_TINT[3])
+    end
+end
+
+@test("each ability has its own colour table")
+local function separateColours()
+    ns.Config("overpower").rageColor.r = 1
+    expect(ns.Config("revenge").rageColor.r).toBe(ns.NO_RAGE_TINT[1])
+    ns.NewProfile("Other")
+    expect(ns.Config("overpower").rageColor.r).toBe(ns.NO_RAGE_TINT[1])
+end
+
+@test("thresholds are whole numbers from 0 to 100")
+local function thresholdRange()
+    expect(importAbility("overpower", { rageThreshold = 150 }).rageThreshold).toBe(100)
+    expect(importAbility("overpower", { rageThreshold = -5 }).rageThreshold).toBe(0)
+    expect(importAbility("overpower", { rageThreshold = 12.6 }).rageThreshold).toBe(13)
+end
+
+@test("an unknown look becomes tint")
+local function badLook()
+    expect(importAbility("revenge", { rageLook = "glow" }).rageLook).toBe("tint")
+    expect(importAbility("revenge", { rageLook = "fade" }).rageLook).toBe("fade")
+end
+
+@test("a broken colour falls back, and components are kept between 0 and 1")
+local function badColour()
+    local cfg = importAbility("execute", { rageColor = { r = "x" } })
+    expect(cfg.rageColor.r).toBe(ns.NO_RAGE_TINT[1])
+    expect(cfg.rageColor.g).toBe(ns.NO_RAGE_TINT[2])
+    expect(cfg.rageColor.b).toBe(ns.NO_RAGE_TINT[3])
+    cfg = importAbility("execute", { rageColor = { r = 2, g = 0.5, b = -1 } })
+    expect(cfg.rageColor.r).toBe(1)
+    expect(cfg.rageColor.g).toBe(0.5)
+    expect(cfg.rageColor.b).toBe(0)
+end
+
+@test("export and import keep the threshold, look and colour")
+local function roundTrip()
+    local op = ns.Config("overpower")
+    op.rageThreshold = 30
+    op.rageLook = "fade"
+    op.rageColor = { r = 1, g = 0, b = 0 }
+    ns.ImportProfile(ns.ExportProfile(), "Shared")
+    local got = ns.Config("overpower")
+    expect(got.rageThreshold).toBe(30)
+    expect(got.rageLook).toBe("fade")
+    expect(got.rageColor.r).toBe(1)
+    expect(got.rageColor.g).toBe(0)
+    expect(got.rageColor.b).toBe(0)
+end
+
+--------------------------------------------------------------------------------
+-- The game's curve: the real ns.RageLook, with UnitPowerPercent evaluating
+-- the curve it's given at a known rage
+--------------------------------------------------------------------------------
+
+local function withRage(rage)
+    local seen = {}
+    mock.fake("UnitPowerPercent", function(unit, powerType, _, curve)
+        seen.unit, seen.powerType = unit, powerType
+        return curve:Evaluate(rage / 100)
+    end)
+    return seen
+end
+
+@test("threshold off: no look, and the game isn't asked")
+local function curveOff()
+    local seen = withRage(10)
+    expect(ns.RageLook("overpower")).toBe(nil)
+    expect(seen.unit).toBe(nil)
+end
+
+@test("tint: the chosen colour below the threshold, white from it up")
+local function curveTint()
+    local cfg = ns.Config("execute")
+    cfg.rageThreshold = 30
+    cfg.rageColor = { r = 1, g = 0.25, b = 0 }
+    local seen = withRage(29)
+    local mode, color = ns.RageLook("execute")
+    expect(mode).toBe("tint")
+    expect(seen.unit).toBe("player")
+    expect(seen.powerType).toBe(Enum.PowerType.Rage)
+    local r, g, b, a = color:GetRGBA()
+    expect(r).toBe(1)
+    expect(g).toBe(0.25)
+    expect(b).toBe(0)
+    expect(a).toBe(1)
+    withRage(30)
+    r, g, b, a = select(2, ns.RageLook("execute")):GetRGBA()
+    expect(r + g + b + a).toBe(4)
+end
+
+@test("fade: see-through below the threshold, shown from it up")
+local function curveFade()
+    local cfg = ns.Config("overpower")
+    cfg.rageThreshold = 15
+    cfg.rageLook = "fade"
+    withRage(14)
+    local mode, alpha = ns.RageLook("overpower")
+    expect(mode).toBe("fade")
+    expect(alpha).toBe(0)
+    withRage(15)
+    expect(select(2, ns.RageLook("overpower"))).toBe(1)
+    withRage(100)
+    expect(select(2, ns.RageLook("overpower"))).toBe(1)
+end
+
+@test("a changed threshold, look or colour takes effect at once")
+local function curveRebuilt()
+    local cfg = ns.Config("overpower")
+    cfg.rageThreshold = 50
+    cfg.rageLook = "fade"
+    withRage(40)
+    expect(select(2, ns.RageLook("overpower"))).toBe(0)
+    cfg.rageThreshold = 40
+    expect(select(2, ns.RageLook("overpower"))).toBe(1)
+    cfg.rageLook = "tint"
+    cfg.rageThreshold = 50
+    cfg.rageColor = { r = 0, g = 1, b = 0 }
+    expect((select(2, ns.RageLook("overpower")):GetRGBA())).toBe(0)
+end
+
+@test("without the game's function, or when it fails: no look and no error")
+local function curveMissing()
+    ns.Config("revenge").rageThreshold = 30
+    mock.fake("UnitPowerPercent", nil)
+    expect(ns.RageLook("revenge")).toBe(nil)
+    mock.fake("UnitPowerPercent", function() error("nope") end)
+    expect(ns.RageLook("revenge")).toBe(nil)
+    mock.fake("UnitPowerPercent", function() return nil end)
+    expect(ns.RageLook("revenge")).toBe(nil)
+end
+
+--------------------------------------------------------------------------------
+-- On the icon: ns.RageLook stubbed with plain values the test can read back
+-- (the game's are secret)
+--------------------------------------------------------------------------------
+
+local function arm()
+    usable, noPower = true, false
+    mock.fake("GetShapeshiftForm", function() return 2 end)
+    mock.fake("GetShapeshiftFormInfo", function() return nil, nil, nil, 71 end)
+    mock.stub(C_Spell, "IsSpellUsable", function(id)
+        if id == REVENGE then return usable, noPower end
+        return false, false
+    end)
+    mock.stub(ns, "RageLook", function(abilityKey)
+        if abilityKey == "revenge" then return look.mode, look.value end
+    end)
+    mock.player:enterCombat()
+end
+
+local function frame() return _G["OverpowerAlertRevengeIconFrame"] end
+local function rageLayer() return (frame():GetChildren()) end
+
+-- The spell texture: the ARTWORK texture somewhere under `layer`.
+local function textureOf(layer)
+    for _, region in ipairs({ layer:GetRegions() }) do
+        if region:GetObjectType() == "Texture" and region:GetDrawLayer() == "ARTWORK" then return region end
+    end
+    for _, child in ipairs({ layer:GetChildren() }) do
+        local found = textureOf(child)
+        if found then return found end
+    end
+end
+
+local function colour(layer)
+    local r, g, b = textureOf(layer or rageLayer()):GetVertexColor()
+    return string.format("%.2f,%.2f,%.2f", r, g, b)
+end
+
+local WHITE, RED, BLUE = "1.00,1.00,1.00", "1.00,0.00,0.00", "0.50,0.50,1.00"
+
+local function block()
+    mock.fireUnitEvent("UNIT_COMBAT", "player", "BLOCK", "", 0, 1)
+    mock.waitSeconds(0.15)
+end
+
+@test("threshold off: the icon looks normal")
+local function iconOff()
+    arm()
+    block()
+    expect(frame()).toBeShown()
+    expect(colour()).toBe(WHITE)
+    expect(rageLayer():GetAlpha()).toBe(1)
+end
+
+@test("tint: the icon takes the colour while below, and turns normal once there's enough")
+local function iconTint()
+    arm()
+    look.mode, look.value = "tint", CreateColor(1, 0, 0, 1)
+    block()
+    expect(colour()).toBe(RED)
+    expect(rageLayer():GetAlpha()).toBe(1)
+    look.value = CreateColor(1, 1, 1, 1)
+    mock.waitSeconds(0.1)
+    expect(frame()).toBeShown()
+    expect(colour()).toBe(WHITE)
+end
+
+@test("tint wins over the short-on-rage blue")
+local function tintOverBlue()
+    arm()
+    ns.Config("revenge").tintNoRage = true
+    look.mode, look.value = "tint", CreateColor(1, 0, 0, 1)
+    block()
+    usable, noPower = false, true
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitSeconds(0.25)
+    expect(colour()).toBe(RED)
+    -- Threshold off again: the blue takes over.
+    look.mode, look.value = nil, nil
+    mock.waitSeconds(0.25)
+    expect(colour()).toBe(BLUE)
+    ns.Config("revenge").tintNoRage = false
+end
+
+@test("a tint colour the game won't take leaves the short-on-rage blue working")
+local function badTint()
+    arm()
+    ns.Config("revenge").tintNoRage = true
+    look.mode, look.value = "tint", {} -- no GetRGBA
+    block()
+    usable, noPower = false, true
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitSeconds(0.25)
+    expect(colour()).toBe(BLUE)
+    expect(mock.errors()).toEqual({})
+    ns.Config("revenge").tintNoRage = false
+end
+
+@test("fade: the whole icon follows the rage alpha, and the blue tint still works")
+local function iconFade()
+    arm()
+    ns.Config("revenge").tintNoRage = true
+    look.mode, look.value = "fade", 0
+    block()
+    usable, noPower = false, true
+    mock.fireEvent("SPELL_UPDATE_USABLE")
+    mock.waitSeconds(0.25)
+    expect(frame()).toBeShown()
+    expect(rageLayer():GetAlpha()).toBe(0)
+    expect(colour()).toBe(BLUE)
+    look.value = 1
+    mock.waitSeconds(0.1)
+    expect(rageLayer():GetAlpha()).toBe(1)
+    ns.Config("revenge").tintNoRage = false
+end
+
+@test("a preview ignores the threshold")
+local function preview()
+    arm()
+    look.mode, look.value = "fade", 0
+    ns.ShowIcon("revenge")
+    mock.waitSeconds(0.2)
+    expect(rageLayer():GetAlpha()).toBe(1)
+    look.mode, look.value = "tint", CreateColor(1, 0, 0, 1)
+    mock.waitSeconds(0.2)
+    expect(colour()).toBe(WHITE)
+end
+
+@test("unlocking a faded icon shows it fully to move")
+local function unlocked()
+    arm()
+    look.mode, look.value = "fade", 0
+    block()
+    expect(rageLayer():GetAlpha()).toBe(0)
+    ns.SetUnlocked("revenge", "icon", true)
+    mock.waitSeconds(0.1)
+    expect(rageLayer():GetAlpha()).toBe(1)
+    ns.SetUnlocked("revenge", "icon", false)
+end
+
+@test("the nameplate copy gets the same look")
+local function copyLook()
+    arm()
+    local cfg = ns.Config("revenge")
+    cfg.iconOnNameplate, cfg.nameplateBoth = true, true
+    mock.unitOf("target"):showNameplate()
+    look.mode, look.value = "tint", CreateColor(1, 0, 0, 1)
+    block()
+    local copy
+    for _, child in ipairs({ frame():GetChildren() }) do
+        if child ~= rageLayer() then copy = child end
+    end
+    expect(copy:IsVisible()).toBe(true)
+    local copyLayer = copy:GetChildren()
+    expect(colour(copyLayer)).toBe(RED)
+    look.mode, look.value = "fade", 0
+    mock.waitSeconds(0.1)
+    expect(copyLayer:GetAlpha()).toBe(0)
+    cfg.iconOnNameplate, cfg.nameplateBoth = false, false
+end
+
+@test("the look is cleared when the icon goes")
+local function cleared()
+    arm()
+    look.mode, look.value = "fade", 0
+    block()
+    expect(rageLayer():GetAlpha()).toBe(0)
+    mock.waitSeconds(6)
+    expect(frame()).never.toBeShown()
+    expect(rageLayer():GetAlpha()).toBe(1)
+    look.mode, look.value = "tint", CreateColor(1, 0, 0, 1)
+    block()
+    expect(colour()).toBe(RED)
+    mock.waitSeconds(6)
+    expect(colour()).toBe(WHITE)
+end

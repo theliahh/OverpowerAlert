@@ -58,6 +58,12 @@ There's also a tab for each ability, and every setting below is set separately f
 - **On-screen text:** show or hide "OVERPOWER!" or "REVENGE!", and set its size. Type your own text in the **Text** box to show instead (up to 40 letters; press Enter to preview it). Leave it empty for the default.
 - **Spell icon** (on by default): pops up the ability's icon. Set its size with the slider, or type it into the box beside it (10 to 200 pixels; 64 by default) and pick a glow: Proc Glow, Action Button Glow, Pixel Glow, Autocast Shine or None.
 - **Tint blue when short on rage** (off by default): the icon turns blue, like an action button, while you don't have enough rage to cast the ability. The game only reports this in a stance the ability can be cast in (Battle Stance for Overpower, Defensive for Revenge), so in other stances the icon stays its normal colour.
+- **Rage threshold** (0, off, by default): while the icon is up and your rage is below the number you set (1 to 100), the icon changes look, in any stance. Once your rage reaches it, the icon looks normal again. For example, set Execute to 30 to see when you have rage for a big Execute.
+  - **Below the threshold**, choose **Tint the icon**, in a colour you pick (blue by default), or **Fade the icon out**, so the icon only appears once you have the rage.
+  - Only the icon changes. The game hides your rage from addons, so the sound and text can't wait for it, and the alert still comes when the opening does.
+  - Previews and an unlocked icon show the normal look.
+  - In the icon group, a faded icon keeps its place, leaving a gap.
+  - With Tint chosen, its colour replaces the blue from "Tint blue when short on rage".
 - **Icon on the nameplate** (on by default for Overpower, off for the others): attaches the icon to your target's nameplate instead of a fixed spot, so it moves with the target. Choose the side (above, below, left or right; above by default) and an X/Y offset in pixels from that side.
   - If both icons are on the nameplate, give Overpower and Revenge different offsets (for example X -36 and X 36) so they don't overlap when both are up.
   - It follows target changes, and nameplates appearing or disappearing.
@@ -92,6 +98,7 @@ On WoW Forever's client, addons can't read the combat log, so the addon pieces e
 - **Victory Rush:** the "Victorious" buff you get after a kill, which also says when the 20 seconds run out.
 - **Execute:** the game hides your target's health from addons, so the addon watches for Execute becoming usable, which the game allows only below 20% health. That only shows in Battle and Berserker Stance; in Defensive Stance an Execute already up stays up until your target changes. Otherwise, with Defensive Stance ticked, the icon is shown see-through and the game itself makes it visible below 20%: the addon hands the hidden health to the icon without reading it. Because the addon never learns when the target crosses 20%, it can't play a sound or show text there. Switching to Battle or Berserker Stance below 20% gives the full alert. If the target's health ever is readable, it's used instead.
 - **Overpower:** a quirk carried over from the original game. An Overpower opening is tracked as a hidden combo point on your character, which appears when your target dodges your attack and lasts 5 seconds, whatever stance you're in.
+- **Rage threshold:** your rage is hidden from addons too, so it works like Execute in Defensive Stance: the game puts your rage through a curve and the result colours or fades the icon directly, without the addon ever reading it.
 - **All:** the ability turning usable in its own stance is used as a backup signal.
 
 It picks up whichever rank you've learned.
